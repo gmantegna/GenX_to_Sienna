@@ -14,13 +14,14 @@ using HydroPowerSimulations
 
 # parameters
 
-data_directory = "/Users/gabrielmantegna/GitHub/GenX/example_systems/CPUC_IRP_2035Only_GenX_fulltimeseries";
-output_directory_base = "/Users/gabrielmantegna/GitHub/GenX_to_Sienna/results_"
+data_directory = "/scratch/gpfs/gm1710/SCP_GenX_Case_FullWY" 
+output_directory_base = "/scratch/gpfs/gm1710/SCP_Sienna_Outputs/results_"
 results_folder_name = "results_resolverepperiods"
 
+global start_time::Int
 start_time=1
 for i in 0:22
-
+    global start_time
     year=1998+i
     output_directory = output_directory_base*string(year)
     mkdir(output_directory)
@@ -455,9 +456,13 @@ for i in 0:22
     curtailment=gen.data[:ActivePowerVariable__RenewableDispatch__Curtailment]
     flows=read_variable(res,"FlowActivePowerVariable__AreaInterchange")
 
-    for variable in ["charge_energyreservoirstorage","discharge_energyreservoirstorage","activepower_thermalstandard","df_ren_dis","demand","curtailment","flows"]
-        CSV.write(joinpath(output_directory,variable*".csv"), eval(Meta.parse(variable)))
-    end
+    CSV.write(joinpath(output_directory,"charge_energyreservoirstorage.csv"),charge_energyreservoirstorage)
+    CSV.write(joinpath(output_directory,"discharge_energyreservoirstorage.csv"),discharge_energyreservoirstorage)
+    CSV.write(joinpath(output_directory,"activepower_thermalstandard.csv"),activepower_thermalstandard)
+    CSV.write(joinpath(output_directory,"df_ren_dis.csv"),df_ren_dis)
+    CSV.write(joinpath(output_directory,"demand.csv"),demand)
+    CSV.write(joinpath(output_directory,"curtailment.csv"),curtailment)
+    CSV.write(joinpath(output_directory,"flows.csv"),flows)
 
     start_time=end_time+1
 
