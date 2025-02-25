@@ -63,6 +63,7 @@ for i in 0:22
     end
     fuels_df = CSV.read(joinpath(data_directory, "system", "Fuels_data.csv"), DataFrame) ;
     gen_variability_df = CSV.read(joinpath(data_directory, "system", "Generators_variability.csv"), DataFrame) ;
+    energy_budget_df = CSV.read(joinpath(data_directory, "system", "Hourly_energy_budget.csv"), DataFrame) ;
     mt_df = CSV.read(joinpath(data_directory, "MoverTypesMapping.csv"), DataFrame) ;
     fm_df = CSV.read(joinpath(data_directory, "FuelMapping.csv"), DataFrame) ;
     sm_df = CSV.read(joinpath(data_directory, "StorageMapping.csv"), DataFrame) ;
@@ -144,7 +145,7 @@ for i in 0:22
             name = string(network_df[i, :Network_Lines]),
             available = true,
             active_power_flow = 0.0,
-            flow_limits=(from_to=get_rating(lines[i])/sys_base_power,to_from=get_rating(lines[i])/sys_base_power),
+            flow_limits=(from_to=get_rating(lines[i])*network_df[i, :Profile_Forward]/sys_base_power,to_from=get_rating(lines[i])*network_df[i, :Profile_Reverse]/sys_base_power),
             from_area=areas[network_df[i, :Start_Zone]],
             to_area=areas[network_df[i, :End_Zone]],
         )
@@ -297,7 +298,9 @@ for i in 0:22
             push!(vector_of_reserves_resources, hydro)
         end
         ren_values = gen_variability_df[start_time:end_time, Symbol(resource_name)]
-        ren_timearray = TimeArray(timestamps, ren_values);
+        energy_budget = energy_budget_df[start_time:end_time, Symbol(resource_name)]
+        cf_to_assign = min(ren_values,energy_budget)
+        ren_timearray = TimeArray(timestamps, cf_to_assign);
         ren_time_series = SingleTimeSeries(
             name = "max_active_power",
             data = ren_timearray;
