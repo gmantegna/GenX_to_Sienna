@@ -1,3 +1,5 @@
 results/*
+results*/*
 .ipynb_checkpoints/*
 src/*.out
+.DS_Store

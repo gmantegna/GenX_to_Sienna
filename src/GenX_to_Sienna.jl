@@ -14,22 +14,25 @@ using HydroPowerSimulations
 
 # parameters
 
-data_directory = "/scratch/gpfs/gm1710/SCP_GenX_Case_FullWY" 
-output_directory_base = "/scratch/gpfs/gm1710/SCP_Sienna_Outputs/results_"
-results_folder_name = "results_resolverepperiods"
+data_directory = "/Users/gabrielmantegna/GitHub/GenX/example_systems/CPUC_IRP_2035Only_GenX_fulltimeseries_IOU" #"/scratch/gpfs/gm1710/SCP_GenX_Case_FullWY" 
+output_directory_base = "/Users/gabrielmantegna/GitHub/GenX_to_Sienna/results" #"/scratch/gpfs/gm1710/SCP_Sienna_Outputs/results_"
+results_folder_name = "results"
 
 global start_time::Int
 start_time=1
-for i in 0:22
+for i in [0] # 0:22
     global start_time
     year=1998+i
     output_directory = output_directory_base*string(year)
     mkdir(output_directory)
-    if (mod(year,4)==0) && (year!=2020)
-        end_time = start_time+8784-1
-    else
-        end_time = start_time+8760-1
-    end
+    # if (mod(year,4)==0) && (year!=2020)
+    #     end_time = start_time+8784-1
+    # else
+    #     end_time = start_time+8760-1
+    # end
+    # num_hours = end_time-start_time+1
+    start_time=1
+    end_time=24
     num_hours = end_time-start_time+1
     timestamps = range(DateTime(string(year)*"-01-01T00:00:00"), step = Dates.Hour(1), length = num_hours)
     horizon=num_hours
@@ -56,6 +59,9 @@ for i in 0:22
     demand_df = CSV.read(joinpath(data_directory, "system", "Demand_data.csv"), DataFrame) ;
     network_df = CSV.read(joinpath(data_directory, "system", "Network.csv"), DataFrame) ;
     reserves_df = CSV.read(joinpath(data_directory, "system", "Operational_reserves.csv"), DataFrame) ;
+    interface_df = CSV.read(joinpath(data_directory, "system","Simultaneous_Flow_Constraints.csv"), DataFrame) ;
+    oprsv_zones = CSV.read(joinpath(data_directory, "oprsv_zones.csv"), DataFrame).Zone ;
+
     if network_expansion
         network_expansion_df = CSV.read(joinpath(data_directory, "results", "network_expansion.csv"), DataFrame) ;
     end
@@ -154,6 +160,24 @@ for i in 0:22
     end
     add_components!(sys,ais)
 
+    flow_limits = unique(interface_df[!,"Simultaneous Flow Group"])
+    interface_df.Direction = get.(Ref(Dict("forward"=>1,"reverse"=>-1)),interface_df.Direction,"unknown")
+    for i in 1:length(flow_limits)
+        interface_name = flow_limits[i]
+        this_interface=interface_df[interface_df[!,"Simultaneous Flow Group"].==interface_name,:]
+        interface=TransmissionInterface(;
+            name=interface_name,
+            available=true,
+            active_power_flow_limits=(min=0.0,max=this_interface[:,"limit_MW"][1]),
+            direction_mapping=Dict(string.(this_interface.Line_Number) .=> this_interface.Direction),
+        )
+        vector_of_lines=[]
+        for line in this_interface.Line_Number
+            push!(vector_of_lines,get_component(Line, sys, string(line)))
+        end
+        add_service!(sys,interface,vector_of_lines)
+    end
+
     # initiate list of resources contributing to frequency regulation and operating reserves
     vector_of_regulation_resources = []
     vector_of_reserves_resources = []
@@ -243,7 +267,7 @@ for i in 0:22
     # must run generators (assume only Customer PV)
     for i in 1:count(!ismissing, must_run_df[:, "Resource"])
         resource_name = must_run_df[i, :Resource]
-        if resource_name!="Customer_PV"
+        if !occursin("Customer_PV",resource_name)
             throw(ErrorException("Only Customer PV is supported as a must-run generator."))
         end
         renewable = RenewableNonDispatch(;
@@ -404,7 +428,10 @@ for i in 0:22
     # add reserve requirement based on demand
     reg_requirement=reserves_df[1,:Reg_Req_Percent_Demand]
     reg_zone=reserves_df[1,:OpRsv_Zone]
-    demand_timeseries = Float64.(demand_df[start_time:end_time,Symbol("Demand_MW_z" * "" * string(reg_zone))])
+    demand_timeseries = zeros(length(start_time:end_time))
+    for i in oprsv_zones
+        demand_timeseries += Float64.(demand_df[start_time:end_time,Symbol("Demand_MW_z" * "" * string(i))])
+    end
     reserve_requirement = demand_timeseries * reg_requirement
     reserve_timearray = TimeArray(timestamps, reserve_requirement);
     reserve_timeseries = SingleTimeSeries(;
@@ -437,6 +464,7 @@ for i in 0:22
     set_network_model!(template_uc, NetworkModel(AreaBalancePowerModel))
     set_device_model!(template_uc, AreaInterchange, StaticBranch)
     set_service_model!(template_uc, VariableReserve{ReserveUp}, RangeReserve)
+    # set_service_model!(template_uc, TransmissionInterface, ConstantMaxInterfaceFlow)
     problem=DecisionModel(template_uc,sys;optimizer=optimizer_with_attributes(Gurobi.Optimizer),horizon=Dates.Hour(horizon))
 
     println("building model")
