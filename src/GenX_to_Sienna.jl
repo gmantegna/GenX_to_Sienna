@@ -1,4 +1,4 @@
-module GenX_to_Sienna
+module GenX_to_Sienna_FPA
 
 using PowerSystems
 using PowerSimulations
@@ -11,489 +11,690 @@ using Dates
 using Statistics
 using StorageSystemsSimulations
 using HydroPowerSimulations
+using DataStructures 
 
-# parameters
+##########################
+# Include helper functions
+##########################
+include(joinpath(@__DIR__, "helpers.jl"))
+include(joinpath(@__DIR__, "system_builder.jl"))
+include(joinpath(@__DIR__, "time_series_builder.jl"))
+include(joinpath(@__DIR__, "simulation_builder.jl"))
 
-data_directory = "/Users/gabrielmantegna/GitHub/GenX/example_systems/CPUC_IRP_2035Only_GenX_fulltimeseries_IOU" #"/scratch/gpfs/gm1710/SCP_GenX_Case_FullWY" 
-output_directory_base = "/Users/gabrielmantegna/GitHub/GenX_to_Sienna/results" #"/scratch/gpfs/gm1710/SCP_Sienna_Outputs/results_"
-results_folder_name = "results"
+##########################
+# Define Paths
+##########################
+paths = initialize_paths_and_inputs()
 
-global start_time::Int
-start_time=1
-for i in [0] # 0:22
-    global start_time
-    year=1998+i
-    output_directory = output_directory_base*string(year)
-    mkdir(output_directory)
-    # if (mod(year,4)==0) && (year!=2020)
-    #     end_time = start_time+8784-1
-    # else
-    #     end_time = start_time+8760-1
-    # end
-    # num_hours = end_time-start_time+1
-    start_time=1
-    end_time=24
-    num_hours = end_time-start_time+1
-    timestamps = range(DateTime(string(year)*"-01-01T00:00:00"), step = Dates.Hour(1), length = num_hours)
-    horizon=num_hours
+##########################
+# Initialize System
+##########################
+# initialize system with base power of 100MVA (aides in per unit calculations)
+sys = System(100.0)
+sys_base_power = get_base_power(sys)
+get_units_base(sys)
+set_units_base_system!(sys, "NATURAL_UNITS")
+get_units_base(sys)
 
-    # read in relevant CSV files
+##########################
+# Define Network Topology 
+##########################
+# GENX Network Topology
+network_df = CSV.read(joinpath(paths[:data_dir], "system", "Network.csv"), DataFrame)
 
-    if isfile(joinpath(data_directory, "results", "network_expansion.csv"))
-        network_expansion=true
-    else
-        network_expansion=false
-    end
+# Buses
+##########################
+network_mapping_df = network_df[:, [first(names(network_df)), "zone_num"]]
+#rename the first column to "zone"
+DataFrames.rename!(network_mapping_df, :Column1 => :zone)
+network_mapping_df = dropmissing(network_mapping_df)
+zone_dict = OrderedDict{String,Int}(
+    string(row.zone) => row.zone_num 
+    for row in eachrow(network_mapping_df))
 
-    if isfile(joinpath(data_directory, "resources", "Must_run.csv"))
-        must_run=true
-    else
-        must_run=false
-    end
+# define PSY bus objects
+buses_dict = create_buses(zone_dict)
 
-    storage_df = CSV.read(joinpath(data_directory, "resources", "Storage.csv"), DataFrame) ;
-    thermal_df = CSV.read(joinpath(data_directory, "resources", "Thermal.csv"), DataFrame) ;
-    vre_df = CSV.read(joinpath(data_directory, "resources", "Vre.csv"), DataFrame) ;
-    hydro_df = CSV.read(joinpath(data_directory, "resources", "Hydro.csv"), DataFrame) ;
-    capacity_df = CSV.read(joinpath(data_directory, results_folder_name, "capacity.csv"), DataFrame);
-    demand_df = CSV.read(joinpath(data_directory, "system", "Demand_data.csv"), DataFrame) ;
-    network_df = CSV.read(joinpath(data_directory, "system", "Network.csv"), DataFrame) ;
-    reserves_df = CSV.read(joinpath(data_directory, "system", "Operational_reserves.csv"), DataFrame) ;
-    interface_df = CSV.read(joinpath(data_directory, "system","Simultaneous_Flow_Constraints.csv"), DataFrame) ;
-    oprsv_zones = CSV.read(joinpath(data_directory, "oprsv_zones.csv"), DataFrame).Zone ;
-
-    if network_expansion
-        network_expansion_df = CSV.read(joinpath(data_directory, "results", "network_expansion.csv"), DataFrame) ;
-    end
-    if must_run
-        must_run_df = CSV.read(joinpath(data_directory, "resources", "Must_run.csv"), DataFrame) ;
-    end
-    fuels_df = CSV.read(joinpath(data_directory, "system", "Fuels_data.csv"), DataFrame) ;
-    gen_variability_df = CSV.read(joinpath(data_directory, "system", "Generators_variability.csv"), DataFrame) ;
-    energy_budget_df = CSV.read(joinpath(data_directory, "system", "Hourly_energy_budget.csv"), DataFrame) ;
-    mt_df = CSV.read(joinpath(data_directory, "MoverTypesMapping.csv"), DataFrame) ;
-    fm_df = CSV.read(joinpath(data_directory, "FuelMapping.csv"), DataFrame) ;
-    sm_df = CSV.read(joinpath(data_directory, "StorageMapping.csv"), DataFrame) ;
-    rm_df = CSV.read(joinpath(data_directory, "RenewableMapping.csv"), DataFrame) ;
-
-    # create 3 dictionaries, one for fuel types, one for mover types, one for storage types
-    mover_dict = Dict((row.Key) => row.Value for row in eachrow(mt_df)) ;
-    fuel_dict = Dict((row.Key) => row.Value for row in eachrow(fm_df)) ;
-    storage_dict = Dict((row.Key) => row.Value for row in eachrow(sm_df)) ;
-    renewable_dict = Dict((row.Key) => row.Value for row in eachrow(rm_df)) ;
-
-    #fuel costs:
-    column_names = names(fuels_df)
-    columns_to_read = column_names[2:end]
-    fuel_prices = Dict{String, Union{Float64, Missing}}()
-    for col in columns_to_read
-        average = mean(fuels_df[2:end, Symbol(col)])  # Ignore the first row
-        fuel_prices[String(col)] = average
-    end
-
-
-    # adding nodes
-    nodes=[]
-    for i in 1:count(!ismissing, network_df[:, "Network_zones"])
-        bus=ACBus(;
-            number=i,
-            name= network_df[i, :1],
-            bustype= i == 1 ? "REF" : "PQ",
-            angle=0,
-            magnitude=0,
-            voltage_limits=nothing,
-            base_voltage=230
-        )
-        push!(nodes,bus)
-    end
-    nodes=Vector{ACBus}(nodes)
-
-    # make system
-    sys_base_power=100.0
-    sys=System(sys_base_power,nodes)
-    set_units_base_system!(sys, "NATURAL_UNITS") ;
-
-    areas=[]
-    for i in 1:count(!ismissing, network_df[:, "Network_zones"])
-        area_factor=Area(;name=network_df[i, :1])
-        push!(areas,area_factor)
-        set_area!(nodes[i], areas[i])
-    end
-    add_components!(sys,areas)
-
-    # create line vector
-    lines=[]
-    for i in 1:count(!ismissing, network_df[:, "Network_Lines"])
-        existing_cap = network_df[i, :Line_Max_Flow_MW]
-        if network_expansion
-            new_cap = network_expansion_df[network_expansion_df.Line .== network_df[i, :Network_Lines], "New_Trans_Capacity"][1]
-        else
-            new_cap=0.0
-        end
-        line = Line(;
-            name = string(network_df[i, :Network_Lines]),
-            available = true,
-            active_power_flow = 0.0,
-            reactive_power_flow = 0.0,
-            arc=Arc(from = nodes[network_df[i, :Start_Zone]], to = nodes[network_df[i, :End_Zone]]),
-            r=0.0,
-            x=0.0,
-            b= (from = 0.0, to = 0.0),
-            rating = (existing_cap+new_cap)/sys_base_power,
-            angle_limits = (0.0, 0.0),
-        )
-        push!(lines,line)  
-    end
-    add_components!(sys,lines) # add lines vector to system
-
-    ais=[]
-    for i in 1:count(!ismissing, network_df[:,"Network_Lines"])
-        ai=AreaInterchange(;
-            name = string(network_df[i, :Network_Lines]),
-            available = true,
-            active_power_flow = 0.0,
-            flow_limits=(from_to=get_rating(lines[i])*network_df[i, :Profile_Forward]/sys_base_power,to_from=get_rating(lines[i])*network_df[i, :Profile_Reverse]/sys_base_power),
-            from_area=areas[network_df[i, :Start_Zone]],
-            to_area=areas[network_df[i, :End_Zone]],
-        )
-        push!(ais,ai)
-    end
-    add_components!(sys,ais)
-
-    flow_limits = unique(interface_df[!,"Simultaneous Flow Group"])
-    interface_df.Direction = get.(Ref(Dict("forward"=>1,"reverse"=>-1)),interface_df.Direction,"unknown")
-    for i in 1:length(flow_limits)
-        interface_name = flow_limits[i]
-        this_interface=interface_df[interface_df[!,"Simultaneous Flow Group"].==interface_name,:]
-        interface=TransmissionInterface(;
-            name=interface_name,
-            available=true,
-            active_power_flow_limits=(min=0.0,max=this_interface[:,"limit_MW"][1]),
-            direction_mapping=Dict(string.(this_interface.Line_Number) .=> this_interface.Direction),
-        )
-        vector_of_lines=[]
-        for line in this_interface.Line_Number
-            push!(vector_of_lines,get_component(Line, sys, string(line)))
-        end
-        add_service!(sys,interface,vector_of_lines)
-    end
-
-    # initiate list of resources contributing to frequency regulation and operating reserves
-    vector_of_regulation_resources = []
-    vector_of_reserves_resources = []
-
-    # thermal generators
-    thermal_gen=[]
-    for i in 1:count(!ismissing, thermal_df[:, "Resource"])
-        resource_name = thermal_df[i, :Resource]
-        capacity_mw = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
-        if "Heat_Rate_MMBTU_per_MWh" in names(thermal_df)
-            heat_rate_curve = LinearCurve(thermal_df[i, :Heat_Rate_MMBTU_per_MWh],0.0)
-        else
-            heat_rate_curve = LinearCurve(thermal_df[i, :PWFU_Heat_Rate_MMBTU_per_MWh_1],thermal_df[i, :PWFU_Fuel_Usage_Zero_Load_MMBTU_per_h])
-        end
-        if "PWFU_Heat_Rate_MMBTU_per_MWh_2" in names(thermal_df)
-            throw(ErrorException("More than one PWFU segment not supported."))
-        end
-        thermal = ThermalStandard(;
-            name = resource_name,
-            available = true,
-            status = true,
-            bus = nodes[thermal_df[i, :Zone]],
-            active_power = 0,
-            reactive_power = 0,
-            rating = 1,
-            active_power_limits = (min = thermal_df[i, :Min_Power], max = 1),
-            reactive_power_limits = nothing,
-            ramp_limits = (up=thermal_df[i, :Ramp_Up_Percentage]/60, down = thermal_df[i, :Ramp_Dn_Percentage]/60),
-            operation_cost = ThermalGenerationCost(
-                variable = FuelCurve(
-                    value_curve = heat_rate_curve,
-                    fuel_cost = fuel_prices[string(thermal_df[i, :Fuel])]
-                    ),
-                fixed = 0,
-                start_up = thermal_df[i, :Start_Cost_per_MW]*capacity_mw,
-                shut_down = 0.0,
-                ),
-            base_power = capacity_mw,
-            time_limits = (up = thermal_df[i, :Up_Time], down = thermal_df[i, :Down_Time]),
-            must_run = false,
-            prime_mover_type = getproperty(PrimeMovers,Symbol(mover_dict[thermal_df[i, :Resource]])),
-            fuel = fuel_dict[string(thermal_df[i, :Fuel])],
-        )
-        push!(thermal_gen, thermal)
-        if thermal_df[i,:Reg_Max]>0
-            push!(vector_of_regulation_resources, thermal)
-        end
-        if thermal_df[i,:Rsv_Max]>0
-            push!(vector_of_reserves_resources, thermal)
-        end
-    end
-    add_components!(sys,thermal_gen) 
-
-    # renewable generators
-    for i in 1:count(!ismissing, vre_df[:, "Resource"])
-        resource_name = vre_df[i, :Resource]
-        renewable = RenewableDispatch(;
-            name = resource_name,
-            available = true,
-            bus = nodes[vre_df[i, :Zone]],
-            active_power = 0.0,
-            reactive_power = 0.0,
-            rating = 1,
-            prime_mover_type = getproperty(PrimeMovers,Symbol(mover_dict[resource_name])),
-            reactive_power_limits = (min = 0.0, max = 0.0),
-            power_factor = 1.0,
-            operation_cost = RenewableGenerationCost(CostCurve(LinearCurve(vre_df[i, :Var_OM_Cost_per_MWh]))),
-            base_power = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
-            )
-        add_component!(sys,renewable)
-        if vre_df[i,:Reg_Max]>0
-            push!(vector_of_regulation_resources, renewable)
-        end
-        if vre_df[i,:Rsv_Max]>0
-            push!(vector_of_reserves_resources, renewable)
-        end
-        ren_values = gen_variability_df[start_time:end_time, Symbol(resource_name)]
-        ren_timearray = TimeArray(timestamps, ren_values);
-        ren_time_series = SingleTimeSeries(
-            name = "max_active_power",
-            data = ren_timearray;
-            scaling_factor_multiplier = get_max_active_power
-        );
-        add_time_series!(sys, renewable, ren_time_series);
-    end
-
-    # must run generators (assume only Customer PV)
-    for i in 1:count(!ismissing, must_run_df[:, "Resource"])
-        resource_name = must_run_df[i, :Resource]
-        if !occursin("Customer_PV",resource_name)
-            throw(ErrorException("Only Customer PV is supported as a must-run generator."))
-        end
-        renewable = RenewableNonDispatch(;
-            name = resource_name,
-            available = true,
-            bus = nodes[must_run_df[i, :Zone]],
-            active_power = 0.0,
-            reactive_power = 0.0,
-            rating = 1.0,
-            prime_mover_type = getproperty(PrimeMovers,Symbol("PVe")),
-            power_factor = 1.0,
-            base_power = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
-            )
-        add_component!(sys,renewable)
-        ren_values = gen_variability_df[start_time:end_time, Symbol(resource_name)]
-        ren_timearray = TimeArray(timestamps, ren_values);
-        ren_time_series = SingleTimeSeries(
-            name = "max_active_power",
-            data = ren_timearray;
-            scaling_factor_multiplier = get_max_active_power
-        );
-        add_time_series!(sys, renewable, ren_time_series);
-    end
-
-    # hydro
-    for i in 1:count(!ismissing, hydro_df[:, "Resource"])
-        resource_name = hydro_df[i, :Resource]
-        hydro = ThermalStandard(;
-            name = resource_name,
-            available = true,
-            status=true,
-            bus = nodes[hydro_df[i, :Zone]],
-            active_power = 0.0,
-            reactive_power = 0.0,
-            rating = 1.0,
-            prime_mover_type = getproperty(PrimeMovers,Symbol("CC")),
-            active_power_limits = (min = hydro_df[i, :Min_Power], max = 1),
-            reactive_power_limits = (min = 0.0, max = 0.0),
-            ramp_limits = (up=hydro_df[i, :Ramp_Up_Percentage]/60, down = hydro_df[i, :Ramp_Dn_Percentage]/60),
-            time_limits = nothing,
-            base_power = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap],
-            operation_cost = ThermalGenerationCost(
-            variable=CostCurve(LinearCurve(hydro_df[i, :Var_OM_Cost_per_MWh])),
-            fixed=0.0,
-            start_up=0.0,
-            shut_down=0.0),
-        )
-        add_component!(sys,hydro)
-        if hydro_df[i,:Reg_Max]>0
-            push!(vector_of_regulation_resources, hydro)
-        end
-        if hydro_df[i,:Rsv_Max]>0
-            push!(vector_of_reserves_resources, hydro)
-        end
-        ren_values = gen_variability_df[start_time:end_time, Symbol(resource_name)]
-        energy_budget = energy_budget_df[start_time:end_time, Symbol(resource_name)]
-        cf_to_assign = min(ren_values,energy_budget)
-        ren_timearray = TimeArray(timestamps, cf_to_assign);
-        ren_time_series = SingleTimeSeries(
-            name = "max_active_power",
-            data = ren_timearray;
-            scaling_factor_multiplier = get_max_active_power
-        );
-        add_time_series!(sys, hydro, ren_time_series);
-    end
-
-    # storage
-    for i in 1:count(!ismissing, storage_df[:, "Resource"])
-        resource_name = storage_df[i, :Resource]
-        storage_device=EnergyReservoirStorage(;
-            name = resource_name,
-            available = true,
-            bus = nodes[storage_df[i, :Zone]],
-            prime_mover_type = getproperty(PrimeMovers,Symbol(mover_dict[resource_name])),
-            storage_technology_type = getproperty(StorageTech,Symbol(storage_dict[resource_name])),
-            storage_capacity = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndEnergyCap],
-            storage_level_limits = (min = 0.0, max = 1.0),
-            initial_storage_capacity_level = 0.0,
-            rating = 1.0,
-            active_power = 0.0,
-            input_active_power_limits = (min = 0.0, max = 1.0),
-            output_active_power_limits = (min = 0.0, max = 1.0),
-            efficiency = (in = storage_df[i, :Eff_Up], out = storage_df[i, :Eff_Down]),
-            reactive_power = 0,
-            reactive_power_limits = (min = 0.0, max = 0.0),
-            base_power = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap],
-            operation_cost = StorageCost(charge_variable_cost = CostCurve(LinearCurve(storage_df[i, :Var_OM_Cost_per_MWh_In])), 
-                discharge_variable_cost = CostCurve(LinearCurve(storage_df[i, :Var_OM_Cost_per_MWh])), 
-                fixed = 0.0, start_up = 0.0, shut_down = 0.0, energy_shortage_cost = 0.0, 
-                energy_surplus_cost = 0.0),
-            )
-        add_component!(sys, storage_device)
-        if storage_df[i,:Reg_Max]>0
-            push!(vector_of_regulation_resources, storage_device)
-        end
-        if storage_df[i,:Rsv_Max]>0
-            push!(vector_of_reserves_resources, storage_device)
-        end
-    end
-
-    # add NSE as a thermal generator for each zone
-
-    VoLL = demand_df[1,"Voll"]
-    for i in 1:count(!ismissing, network_df[:, "Network_zones"])
-        nse = ThermalStandard(;
-            name = "VoLL_"*string(i),
-            available = true,
-            status = true,
-            bus = nodes[i],
-            active_power = 0,
-            reactive_power = 0,
-            rating = 1,
-            active_power_limits = (min = 0, max = 1),
-            reactive_power_limits = nothing,
-            ramp_limits = (up=1000, down = 1000),
-            operation_cost=ThermalGenerationCost(
-                variable=CostCurve(LinearCurve(VoLL)),
-                fixed=0.0,
-                start_up=0.0,
-                shut_down=0.0
-            ),
-            base_power = 1e6,
-            must_run = false,
-            prime_mover_type = getproperty(PrimeMovers,Symbol("CC")),
-        )
-        add_component!(sys, nse)
-    end
-
-    # adding load to each zone:
-    for i in 1:count(!ismissing, network_df[:, "Network_zones"])
-        zone_name = "Load_z"*string(i)
-        power_load=PowerLoad(;
-            name=zone_name,
-            available=true,
-            bus=nodes[i],
-            active_power=1e9,
-            reactive_power=1e9,
-            base_power=1,
-            max_active_power=1,
-            max_reactive_power=0
-            )
-        add_component!(sys, power_load)
-        data = TimeArray(timestamps, Float64.(demand_df[start_time:end_time,Symbol("Demand_MW_z" * "" * string(i))]))
-        time_series = SingleTimeSeries(name="max_active_power", data=data,scaling_factor_multiplier=get_max_active_power)
-        add_time_series!(sys,get_component(PowerLoad, sys, zone_name),time_series)
-    end
-
-    # add frequency regulation reserves to relevant generators
-
-    regulation = VariableReserve{ReserveUp}(
-        name="regulation",
-        available=true,
-        time_frame=0.0,
-        requirement=1/sys_base_power # 1 MW, will later be scaled
-        )
-    add_service!(sys,regulation,vector_of_regulation_resources)
-
-    # add reserve requirement based on demand
-    reg_requirement=reserves_df[1,:Reg_Req_Percent_Demand]
-    reg_zone=reserves_df[1,:OpRsv_Zone]
-    demand_timeseries = zeros(length(start_time:end_time))
-    for i in oprsv_zones
-        demand_timeseries += Float64.(demand_df[start_time:end_time,Symbol("Demand_MW_z" * "" * string(i))])
-    end
-    reserve_requirement = demand_timeseries * reg_requirement
-    reserve_timearray = TimeArray(timestamps, reserve_requirement);
-    reserve_timeseries = SingleTimeSeries(;
-            name = "requirement",
-            data = reserve_timearray,
-            scaling_factor_multiplier = get_requirement,
-        );
-    add_time_series!(sys, regulation, reserve_timeseries);
-
-    transform_single_time_series!(sys,Dates.Hour(horizon),Dates.Hour(horizon)) 
-
-    template_uc=ProblemTemplate()
-    set_device_model!(template_uc,ThermalStandard,ThermalDispatchNoMin)
-    set_device_model!(template_uc,PowerLoad,StaticPowerLoad)
-    set_device_model!(template_uc, RenewableDispatch, RenewableFullDispatch)
-    set_device_model!(template_uc, RenewableNonDispatch, FixedOutput)
-    set_device_model!(template_uc, Line, StaticBranch)
-    set_device_model!(template_uc,DeviceModel(
-            EnergyReservoirStorage,
-            StorageDispatchWithReserves;
-            attributes=Dict("reservation" => true,
-                "cycling_limits" => false,
-                "energy_target" => false,
-                "complete_coverage" => false,
-                "regularization" => true,
-            ),
-            use_slacks=false,
-        )
-    )
-    set_network_model!(template_uc, NetworkModel(AreaBalancePowerModel))
-    set_device_model!(template_uc, AreaInterchange, StaticBranch)
-    set_service_model!(template_uc, VariableReserve{ReserveUp}, RangeReserve)
-    # set_service_model!(template_uc, TransmissionInterface, ConstantMaxInterfaceFlow)
-    problem=DecisionModel(template_uc,sys;optimizer=optimizer_with_attributes(Gurobi.Optimizer),horizon=Dates.Hour(horizon))
-
-    println("building model")
-    build!(problem,output_dir=mktempdir())
-    println("solving model")
-    solve!(problem)
-    println("getting outputs and writing")
-    res=OptimizationProblemResults(problem) ;
-    gen = get_generation_data(res) ;
-
-    # get model data
-    charge_energyreservoirstorage=gen.data[:ActivePowerInVariable__EnergyReservoirStorage]
-    discharge_energyreservoirstorage=gen.data[:ActivePowerOutVariable__EnergyReservoirStorage]
-    activepower_thermalstandard=gen.data[:ActivePowerVariable__ThermalStandard]
-    df_ren_dis=gen.data[:ActivePowerVariable__RenewableDispatch]
-    demand=demand_df[start_time:end_time,(end-(length(areas)-1)):end]
-    curtailment=gen.data[:ActivePowerVariable__RenewableDispatch__Curtailment]
-    flows=read_variable(res,"FlowActivePowerVariable__AreaInterchange")
-
-    CSV.write(joinpath(output_directory,"charge_energyreservoirstorage.csv"),charge_energyreservoirstorage)
-    CSV.write(joinpath(output_directory,"discharge_energyreservoirstorage.csv"),discharge_energyreservoirstorage)
-    CSV.write(joinpath(output_directory,"activepower_thermalstandard.csv"),activepower_thermalstandard)
-    CSV.write(joinpath(output_directory,"df_ren_dis.csv"),df_ren_dis)
-    CSV.write(joinpath(output_directory,"demand.csv"),demand)
-    CSV.write(joinpath(output_directory,"curtailment.csv"),curtailment)
-    CSV.write(joinpath(output_directory,"flows.csv"),flows)
-
-    start_time=end_time+1
-
+# add buses to system
+for (zone_name, bus) in buses_dict
+    add_component!(sys, bus)
 end
 
-end # module GenX_to_Sienna
+# define collection of buses
+buses = collect(get_components(ACBus, sys))
+
+# let's check our work
+get_components(ACBus, sys)
+show_components(ACBus, sys)
+active_component = get_component(ACBus, sys, "BANC")
+get_number(active_component)
+
+# Areas
+##########################
+# let's first create our dictionary of area objects
+areas_dict = create_areas(buses_dict)
+
+# now we can add the areas to system and assign buses to areas
+for (area_name, area) in areas_dict
+    # add area to system
+    add_component!(sys, area)
+    
+    # assign bus to area
+    bus = get_component(ACBus, sys, area_name)
+    set_area!(bus, area)
+end
+
+# let's check our work
+get_components(Area, sys)
+show_components(Area, sys)
+active_component = collect(get_components(Area, sys))[1]
+get_name(active_component)
+
+# let's verify bus to area assignments
+active_component = collect(get_components(ACBus, sys))[2]
+get_name(get_area(active_component))
+
+# define collection of areas
+areas = collect(get_components(Area, sys))
+
+# Lines
+##########################
+# pull in lines info from GENX Network Topology
+existing_lines_mapping_df = network_df[:, Between("Network_Lines", "Profile_Reverse")]
+
+# Check to see if Network expansion is active (i.e. new incremental transfer service is available)
+if isfile(joinpath(paths[:data_dir], "results", "network_expansion.csv"))
+    network_expansion=true
+else
+    network_expansion=false
+end
+
+if network_expansion
+    candidate_lines_mapping_df = CSV.read(joinpath(paths[:data_dir], "results", "network_expansion.csv"), DataFrame);
+else
+    candidate_lines_mapping_df = nothing
+end
+
+# define PSY line  objects
+lines_dict = create_lines(existing_lines_mapping_df, candidate_lines_mapping_df, sys)
+
+# add lines to system (note: arc count should be equal to line count)
+for (line_number, line) in lines_dict
+    add_component!(sys, line)
+end
+
+# let's check our work
+get_components(Line, sys)
+show_components(Line, sys)
+active_component = collect(get_components(Line, sys))[1]
+get_name(active_component)
+get_arc(active_component)
+get_rating(active_component)
+
+# define collection of lines
+lines = collect(get_components(Line, sys));
+
+# Area Interchanges
+##########################
+# create area interchanges
+area_interchanges_dict = create_area_interchanges(existing_lines_mapping_df, sys_base_power, lines_dict)
+
+# add area interchanges to system
+for (area_interchange_name, area_interchange) in area_interchanges_dict
+    add_component!(sys, area_interchange)
+end
+
+#= # remove all area interchanges from system
+for Area_Interchange in collect(get_components(AreaInterchange, sys))
+    remove_component!(sys, Area_Interchange)
+end =#
+
+# let's check our work
+get_components(AreaInterchange, sys)
+show_components(AreaInterchange, sys)
+active_component = collect(get_components(AreaInterchange, sys))[1]
+get_name(active_component)
+get_from_area(active_component)
+get_to_area(active_component)
+get_flow_limits(active_component)
+
+# define collection of area interchanges
+area_interchanges = collect(get_components(AreaInterchange, sys))
+
+# Transmission Interfaces
+##########################
+# read interface data
+interface_df = CSV.read(joinpath(paths[:data_dir], "system", "Simultaneous_Flow_Constraints.csv"), DataFrame)
+
+# create transmission interfaces dictionary
+interfaces_dict = create_transmission_interfaces(interface_df, lines_dict, sys_base_power)
+
+# add interfaces to system
+for (interface_name, interface) in interfaces_dict
+    add_component!(sys, interface)
+end
+
+# let's check our work
+get_components(TransmissionInterface, sys)
+show_components(TransmissionInterface, sys)
+active_component = collect(get_components(TransmissionInterface, sys))[1]
+get_name(active_component)
+get_active_power_flow_limits(active_component)
+get_direction_mapping(active_component)
+
+# define collection of transmission interfaces
+transmission_interfaces = collect(get_components(TransmissionInterface, sys))
+
+##########################
+# Define PowerLoads 
+##########################
+# read in relevant CSV files
+
+# define file_path 
+demand_data_path = joinpath(paths[:data_dir], "system", "Demand_data.csv")
+# call the function to generate the demand timeseries df
+demand_ts = process_demand_data(demand_data_path, zone_dict)
+
+# Let's create our power loads dictionary
+power_loads_dict = create_power_loads(demand_ts, sys)
+
+# Now let's add our PowerLoad objects to the system
+for (pl_name, pl_object) in power_loads_dict
+    add_component!(sys, pl_object)
+end
+
+# Let's check our work
+get_components(PowerLoad, sys)
+show_components(PowerLoad, sys)
+active_component = get_component(PowerLoad, sys, "Load_PGE")
+get_base_power(active_component)
+
+##########################
+# Define Fuel Objects 
+##########################
+# define df of fuel mapping
+fuel_mapping_df = CSV.read(joinpath(paths[:data_dir], "FuelMapping.csv"), DataFrame)
+
+##########################
+# Define Generators 
+##########################
+
+# General Gen-Related Info 
+##########################
+# retrieve capacity data
+capacity_df = CSV.read(joinpath(paths[:data_dir], "results", "capacity.csv"), DataFrame);
+# read in prime mover types mapping
+PM_type_df = CSV.read(joinpath(paths[:data_dir], "MoverTypesMapping.csv"), DataFrame);
+# create prime mover type dictionary
+PM_type_dict = Dict((row.Key) => row.Value for row in eachrow(PM_type_df));
+
+# create storage type dictionary
+storage_type_df = CSV.read(joinpath(paths[:data_dir], "StorageMapping.csv"), DataFrame);
+storage_type_dict = Dict((row.Key) => row.Value for row in eachrow(storage_type_df));
+
+# Thermal Generators 
+##########################
+# read in thermal data
+thermal_df = CSV.read(joinpath(paths[:data_dir], "resources", "Thermal.csv"), DataFrame);
+
+# define thermal generator objects
+ThermalStandard_dict = create_ThermalStandard_objects(sys, thermal_df, capacity_df, PM_type_dict, fuel_mapping_df, zone_dict)
+    
+# add thermal generators to system
+for (thermal_name, thermal_object) in ThermalStandard_dict
+    add_component!(sys, thermal_object)
+end
+
+# define collection of thermal generators
+ThermalStandard_generators = collect(get_components(ThermalStandard, sys))
+
+# Check your work
+active_component = ThermalStandard_generators[5]
+
+get_name(active_component)
+get_base_power(active_component) #installed nameplate capacity (MW)   
+show_time_series(active_component) # no time series attached to this component (yet)
+active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+show_time_series(active_component)
+# get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
+# get_time_series_array(DeterministicSingleTimeSeries, active_component, "fuel_price")
+
+
+# Renewable Dispatch Generators (i.e., VRE) 
+##########################
+# read in renewable  data
+vre_df = CSV.read(joinpath(paths[:data_dir], "resources", "Vre.csv"), DataFrame);
+
+# define Vre generator objects
+Vre_dict = create_VRE_objects(sys, vre_df, capacity_df, PM_type_dict, zone_dict)
+
+# add VRE generators to system
+for (vre_name, vre_object) in Vre_dict
+    add_component!(sys, vre_object)
+end
+
+# define collection of VRE generators
+Renew_D_generators = collect(get_components(RenewableDispatch, sys))
+
+# Check your work
+active_component = Renew_D_generators[5]
+
+get_name(active_component)
+get_base_power(active_component) #installed nameplate capacity (MW)   
+show_time_series(active_component) # no time series attached to this component (yet)
+active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+show_time_series(active_component) # no time series attached to this component (yet)
+
+# Renewable NonDispatch Generators (i.e., BTM) 
+##########################
+# Check to see if Must run is active (must run is BTM PV)
+if isfile(joinpath(paths[:data_dir], "resources", "Must_run.csv"))
+
+    btm_df = CSV.read(joinpath(paths[:data_dir], "resources", "Must_run.csv"), DataFrame);
+
+    # define Vre generator objects
+    btm_dict = create_btm_objects(sys, btm_df, capacity_df, PM_type_dict, zone_dict)
+
+    # add VRE generators to system
+    for (btm_name, btm_object) in btm_dict
+        add_component!(sys, btm_object)
+    end
+
+    # define collection of VRE generators
+    Renew_ND_generators = collect(get_components(RenewableNonDispatch, sys))
+
+    # Check your work
+    active_component = Renew_ND_generators[3]
+
+    get_name(active_component)
+    get_base_power(active_component) #installed nameplate capacity (MW)   
+    show_time_series(active_component) # no time series attached to this component (yet)
+
+else
+    # do nothing
+end
+
+# Hydro Generators 
+##########################
+# read in hydro generator data
+hydro_df = CSV.read(joinpath(paths[:data_dir], "resources", "Hydro.csv"), DataFrame);
+
+# define Vre generator objects
+Hydro_Dispatch_dict = create_Hydro_objects(sys, hydro_df, capacity_df, PM_type_dict, zone_dict)
+
+# add VRE generators to system
+for (hydro_name, hydro_object) in Hydro_Dispatch_dict
+    add_component!(sys, hydro_object)
+end
+
+# define collection of Hydro  generators
+HydroDispatch_generators = collect(get_components(HydroDispatch, sys))
+
+# Check your work
+active_component = HydroDispatch_generators[3]
+
+get_name(active_component)
+get_base_power(active_component) #installed nameplate capacity (MW)   
+show_time_series(active_component) # no time series attached to this component (yet)
+active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+show_time_series(active_component) # no time series attached to this component (yet)
+
+# Storage Resources 
+##########################
+# read in storage data      
+storage_df = CSV.read(joinpath(paths[:data_dir], "resources", "Storage.csv"), DataFrame);
+
+# define storage generator objects
+Storage_dict = create_storage_objects(sys, storage_df, capacity_df, PM_type_dict, storage_type_dict, zone_dict)    
+
+# add storage generators to system
+for (storage_name, storage_object) in Storage_dict
+    add_component!(sys, storage_object)
+end
+
+# define collection of storage generators
+Storage_objects = collect(get_components(Storage, sys));
+
+# Check your work
+active_component = Storage_objects[5]    
+
+get_name(active_component)
+get_base_power(active_component) #installed nameplate capacity (MW)   
+show_time_series(active_component) # no time series attached to this component (yet)
+active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+
+
+##########################
+# Define time series for PSY objects
+##########################
+
+# General
+##########################
+# define file_path 
+generator_variability_data_path = joinpath(paths[:data_dir], "system", "Generators_variability.csv")
+
+# call the function to generate the demand timeseries df
+gen_variability_df = process_generator_variability_data(generator_variability_data_path)
+
+# let's write the gen_variability_df to a csv file
+CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variability_df)
+
+# Power Loads
+##########################
+# first let's create our PSI timeseries objects and store them in a container structured as a nested dictionary
+PL_ts_container = create_demand_PSY_timeseries(demand_ts, power_loads_dict)
+
+# Now we add those PSY timeseries to the PowerLoad objects in the system
+for (device_name, year_ts_dict) in PL_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(PowerLoad, sys, "Load_"*device_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this device
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: Load_", device_name)
+        end
+    else
+        @warn "Device $device_name not found in the system. Time series not added."
+    end
+end
+
+# let's check our work
+active_load = get_component(PowerLoad, sys, "Load_PGE")
+show_time_series(active_load) # now we have time series attached to the PowerLoad object
+get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ignore_scaling_factors = true) #p.u.; units: device base 
+get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ignore_scaling_factors = false) # natural units
+
+# Renewable Dispatch Generators
+##########################
+# Create dictionary of time series for renewable dispatch generators
+renewable_ts_container = create_Renew_D_PSY_timeseries(gen_variability_df, Renew_D_generators)
+
+# spot check the time series
+active_ts = renewable_ts_container["Idaho_Wind_PGE"]["1998"]
+active_ts.name
+active_ts.data
+
+
+# Add all the time series to system
+for (resource_name, year_ts_dict) in renewable_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(RenewableDispatch, sys, resource_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this resource
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: ", resource_name)
+        end
+    else
+        @warn "Device $resource_name not found in the system. Time series not added."
+    end
+end
+
+# Let's check our work
+active_object = Renew_D_generators[1]
+show_time_series(active_object)
+ts_key = get_time_series_keys(active_object)
+ts_ref = get_time_series_keys(active_object).ref
+ts_size = get_time_series_keys(active_object).size
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+
+#= # remove time series of RenewableDispatch objects from system
+for gen in Renew_D_objects # loop through the collection of RenewableDispatch objects
+    for i in length(get_time_series_keys(gen))
+        # retrieve the time series
+        ts_key = get_time_series_keys(gen)[i]
+        ts_name = get_name(ts_key)
+        # remove the time series
+        remove_time_series!(sys, SingleTimeSeries, gen, ts_name)
+    end
+end =#
+
+# Renewable Non-Dispatch Generators
+##########################
+# Create dictionary of time series for renewable non-dispatch generators
+renew_ND_ts_container = create_Renew_ND_PSY_timeseries(gen_variability_df,Renew_ND_generators)
+
+# spot check the time series
+active_ts = renew_ND_ts_container["Customer_PV_PGE"]["1998"]
+active_ts.name
+active_ts.data
+
+# Add all the time series to system
+for (resource_name, year_ts_dict) in renew_ND_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(RenewableNonDispatch, sys, resource_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this resource
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: ", resource_name)
+        end
+    else
+        @warn "Device $resource_name not found in the system. Time series not added."
+    end
+end
+
+# Let's check our work
+active_object = Renew_ND_generators[1]
+show_time_series(active_object)
+ts_key = get_time_series_keys(active_object)
+ts_ref = get_time_series_keys(active_object).ref
+ts_size = get_time_series_keys(active_object).size
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+
+# Thermal Standard Generators
+##########################
+# Create dictionary of time series for thermal standard non-dispatch generators
+ThermalStandard_ts_container = create_ThermalStandard_PSY_timeseries(gen_variability_df,ThermalStandard_generators)
+
+# spot check the time series
+active_ts = ThermalStandard_ts_container["CAISO_Aero_CT_PGE"]["1998"]
+active_ts.name
+active_ts.data
+
+# Add all the time series to system
+for (resource_name, year_ts_dict) in ThermalStandard_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(ThermalStandard, sys, resource_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this resource
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: ", resource_name)
+        end
+    else
+        @warn "Device $resource_name not found in the system. Time series not added."
+    end
+end
+
+# Let's check our work
+active_object = ThermalStandard_generators[1]
+show_time_series(active_object)
+ts_key = get_time_series_keys(active_object)
+ts_ref = get_time_series_keys(active_object).ref
+ts_size = get_time_series_keys(active_object).size
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+
+# Hydro Generators
+##########################
+# Create dictionary of time series for thermal standard non-dispatch generators
+Hydro_ts_container = create_Hydro_PSY_timeseries(gen_variability_df,HydroDispatch_generators)
+
+# spot check the time series
+active_ts = Hydro_ts_container["CAISO_Hydro_PGE"]["1998"]
+active_ts.name
+active_ts.data
+
+# Add all the time series to system
+for (resource_name, year_ts_dict) in Hydro_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(HydroDispatch, sys, resource_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this resource
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: ", resource_name)
+        end
+    else
+        @warn "Device $resource_name not found in the system. Time series not added."
+    end
+end
+
+# Let's check our work
+active_object = HydroDispatch_generators[1]
+show_time_series(active_object)
+ts_key = get_time_series_keys(active_object)
+ts_ref = get_time_series_keys(active_object).ref
+ts_size = get_time_series_keys(active_object).size
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+
+# remove time series (nuclear option)
+#remove_time_series!(sys, SingleTimeSeries)
+
+
+#################################
+# create timeseries fxs 
+#################################
+# create DeterministicSingleTimeSeries objects (48-hr horizon & 24-hr lookahead; i.e. 24 hour "realized intervals") 
+transform_single_time_series!(sys, Hour(48), Hour(24)) 
+
+##########################
+# Define Fuel Info 
+##########################
+# define df of fuel prices 
+fuels_df = CSV.read(joinpath(paths[:data_dir], "system", "Fuels_data.csv"), DataFrame)
+
+# call the function to generate the demand timeseries df
+# fuel_ts = process_fuel_data(fuels_df)
+
+
+##########################
+# Define Outage Data
+##########################
+
+##########################
+# Define Reserves
+##########################
+# general
+reserves_df = CSV.read(joinpath(paths[:data_dir], "system", "Operational_reserves.csv"), DataFrame);
+
+# Spinning Reserves
+spin_requirement = reserves_df[!, "Rsv_Req_Percent_Demand"];
+
+# Reserve Zones
+oprsv_zones = CSV.read(joinpath(paths[:data_dir], "oprsv_zones.csv"), DataFrame).Zone; #CAISO TAC Zones
+
+##########################
+# Define PowerSimulations.jl (PSI) template and model 
+##########################
+# define run_type
+run_type = "Deterministic"
+
+# determine if run_type is deterministic or monte-create
+# Define the range of weather years
+if run_type == "Deterministic"
+    weather_years = 1998;
+elseif run_type == "Monte_Carlo" 
+    weather_years = 1999:1999; # testing  only a few yrs to ensure proper configuration across weather years
+else
+    @warn "Incorrect setting for run_type; $run_type is not a valid option"
+end 
+
+# Iterate over each weather year
+for wy in weather_years
+    # Generate strings for the current year
+    wy = 1998
+
+    if run_type == "Deterministic"
+
+        #assign name
+        uc_decision_name = "deterministic_$wy"
+
+        # Create an empty model reference
+        template_uc = ProblemTemplate()
+
+        # Define non-weather related Device Models
+        ##########################
+        # storage
+        define_storage_model(template_uc)
+
+        # Define weather-dependent Device Models
+        ##########################
+        # thermal
+        define_thermal_model(template_uc, wy)
+
+        # hydro
+        define_hydro_model(template_uc, wy)
+
+        # load
+        define_load_model(template_uc, wy)
+
+        # renewable dispatch
+        define_renewable_dispatch_model(template_uc, wy)
+
+        # renewable non-dispatch
+        define_renewable_non_dispatch_model(template_uc, wy)
+
+        # Define branch model
+        define_branch_model(template_uc)
+
+        # Define network model
+        define_network_model(template_uc)
+
+    elseif run_type == "Monte_Carlo"
+        # do nothing
+        # TO-DO: layer in Sienna-PRAS Interface
+    else
+        @warn "Incorrect setting for run_type; $run_type is not a valid option"
+    end
+
+    ###########################
+    # Build and Execute Simulation
+    ###########################
+    get_units_base(sys)
+    set_units_base_system!(sys, "NATURAL_UNITS")
+    sim, UC_decision = build_and_execute_simulation(template_uc, sys, paths; decision_name=uc_decision_name);
+
+    # Print a message to indicate that the simulation is complete
+    println("Simulation completed for: $uc_decision_name")
+
+    ###########################
+    # Export the Results
+    ###########################
+    if run_type == "Deterministic"
+        # define file paths to store (processed) results for the active year
+        file_path = (paths[:scenario_dir_d])
+    elseif run_type == "Monte_Carlo"
+        # define file paths to store (processed) results for the active weather yr
+        file_path = joinpath(paths[:scenario_dir_s], "results_WY_$year_str")
+    else
+        @warn "Incorrect setting for run_type; $run_type is not a valid option"
+    end 
+    
+    # check if folder directory exists; if not, create it
+    if !ispath(file_path)
+        mkpath(file_path)
+    else
+        # do nothing
+    end
+
+    # export the results
+    query_write_export_results(sim, file_path, uc_decision_name)        
+end
+
+end # module
