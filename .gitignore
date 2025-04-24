@@ -9,3 +9,4 @@ power-systems.log
 src/GenX_to_Sienna_FPA.jl
 src/GenX_to_Sienna_RT.jl
 src/simulation_builder_simple.jl
+src/Generators_variability.csv
