@@ -245,3 +245,146 @@ function process_generator_variability_data(gen_var_data_path::String)
     return result_df
 end
 
+function create_storage_parameters_df(Storage_objects::Vector{EnergyReservoirStorage}, output_path::String)
+    # Create DataFrame with column names matching the parameters we want to check
+    df_storage = DataFrame(
+        name = String[],
+        base_power = Float64[],
+        storage_capacity = Float64[],
+        storage_level_limits_min = Float64[],
+        storage_level_limits_max = Float64[],
+        initial_storage_level = Float64[],
+        efficiency_in = Float64[],
+        efficiency_out = Float64[],
+        input_power_limits_min = Float64[],
+        input_power_limits_max = Float64[],
+        output_power_limits_min = Float64[],
+        output_power_limits_max = Float64[],
+        rating = Float64[]
+    )
+
+    # Loop through all storage devices and add their parameters
+    for storage in Storage_objects
+        push!(df_storage, (
+            get_name(storage),
+            get_base_power(storage),
+            get_storage_capacity(storage),
+            get_storage_level_limits(storage).min,
+            get_storage_level_limits(storage).max,
+            get_initial_storage_capacity_level(storage),
+            get_efficiency(storage).in,
+            get_efficiency(storage).out,
+            get_input_active_power_limits(storage).min,
+            get_input_active_power_limits(storage).max,
+            get_output_active_power_limits(storage).min,
+            get_output_active_power_limits(storage).max,
+            get_rating(storage)
+        ))
+    end
+
+    # Write the DataFrame to a CSV file
+    CSV.write(output_path, df_storage)
+    
+    return df_storage
+end
+
+function create_area_interchange_parameters_df(area_interchanges::Vector{AreaInterchange}, output_path::String)
+    # Create DataFrame with column names matching the parameters we want to check
+    df_interchanges = DataFrame(
+        name = String[],
+        from_area = String[],
+        to_area = String[],
+        flow_limits_min = Float64[],
+        flow_limits_max = Float64[]
+    )
+
+    # Loop through all area interchanges and add their parameters
+    for interchange in area_interchanges
+        flow_limits = get_flow_limits(interchange)
+        push!(df_interchanges, (
+            get_name(interchange),
+            get_name(get_from_area(interchange)),
+            get_name(get_to_area(interchange)),
+            get_flow_limits(interchange).to_from,
+            get_flow_limits(interchange).from_to
+        ))
+    end
+
+    # Write the DataFrame to a CSV file
+    CSV.write(output_path, df_interchanges)
+end
+
+function create_line_parameters_df(lines::Vector{Line}, output_path::String)
+    # Create DataFrame with column names matching the parameters we want to check
+    df_lines = DataFrame(
+        name = String[],
+        from_bus = String[],
+        to_bus = String[],
+        rating = Float64[]
+    )
+
+    # Loop through all lines and add their parameters
+    for line in lines
+        arc = get_arc(line)
+        push!(df_lines, (
+            get_name(line),
+            get_name(get_from(arc)),
+            get_name(get_to(arc)),
+            get_rating(line)
+        ))
+    end
+
+    # Write the DataFrame to a CSV file
+    CSV.write(output_path, df_lines)
+end
+
+function create_powerload_parameters_df(sys::System, paths::Dict)
+    # Initialize DataFrame with columns for PowerLoad attributes
+    df = DataFrame(
+        name = String[],
+        base_power = Float64[],
+        active_power = Float64[],
+        bus_name = String[]
+    )
+
+    # Loop through all PowerLoad components in the system
+    for load in get_components(PowerLoad, sys)
+        # Get the attributes
+        name = get_name(load)
+        base_power = get_base_power(load)
+        active_power = get_active_power(load)
+        bus = get_bus(load)
+        bus_name = get_name(bus)
+
+        # Add row to DataFrame
+        push!(df, (name, base_power, active_power, bus_name))
+    end
+
+    # Write to CSV
+    CSV.write(joinpath(paths[:data_dir], "powerload_parameters.csv"), df)
+end
+
+function create_transmission_interface_parameters_df(sys::System, paths::Dict)
+    # Initialize DataFrame with columns for TransmissionInterface attributes
+    df = DataFrame(
+        name = String[],
+        active_power_flow_limits_min = Float64[],
+        active_power_flow_limits_max = Float64[],
+        direction_mapping = Dict{String, Int}[]
+    )
+
+    # Loop through all TransmissionInterface components in the system
+    for interface in get_components(TransmissionInterface, sys)
+        # Get the attributes
+        name = get_name(interface)
+        flow_limits = get_active_power_flow_limits(interface)
+        direction_mapping = get_direction_mapping(interface)
+
+        # Add row to DataFrame
+        push!(df, (name, flow_limits.min, flow_limits.max, direction_mapping))
+    end
+
+    # Write to CSV
+    CSV.write(joinpath(paths[:data_dir], "transmission_interface_parameters.csv"), df)
+end
+

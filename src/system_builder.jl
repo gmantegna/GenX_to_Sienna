@@ -6,11 +6,12 @@ function create_buses(zone_listing_dict::OrderedDict{String,Int64})
             number = zone_number, # assign zone number as bus number
             name = zone_name,  # assign string as bus name
             bustype = zone_number == 1 ? "REF" : "PV", # defining as generator bus (i.e., active power & voltage magnitude)
-            angle = 0.0,
-            magnitude = 1.0,
-            voltage_limits = (min = 0.9, max = 1.05),
+            angle = nothing,
+            magnitude = nothing,
+            voltage_limits = (min = 0.95, max = 1.05),
             base_voltage = 230.0,
-            area = nothing # we will define this next
+            area = nothing, # we will define this next
+            load_zone = nothing, # Q: What is a load zone
         )
         buses_dict[zone_name] = bus
     end
@@ -77,6 +78,8 @@ function create_lines(existing_lines_df::DataFrame, candidate_lines_df::Union{Da
         line_name = string(get_name(start_bus), "_to_", get_name(end_bus))
         
         # Create the line with proper bus connections
+        # lines dont have a device_base so it gets normalized by the system base power
+        # xfmr too
         line = Line(;
             name = line_name,
             available = true,
@@ -86,8 +89,8 @@ function create_lines(existing_lines_df::DataFrame, candidate_lines_df::Union{Da
             r = 0.0,
             x = 0.0,
             b = (from = 0.0, to = 0.0),
-            rating = (existing_cap + new_cap) / get_base_power(sys),
-            angle_limits = (min = 0.0, max = 0.0),
+            rating = round((existing_cap + new_cap) / get_base_power(sys), digits=4),
+            angle_limits = (min = -0.7, max = 0.7),
         )
         # add line to lines_dict with Network_Lines as key and PSY line object as value
         lines_dict[string(existing_lines_df[i, :Network_Lines])] = line
@@ -108,19 +111,19 @@ function create_area_interchanges(existing_lines_df::DataFrame, sys_base_power::
         to_area_o = get_area(get_to(get_arc(line_psy_o)))   
 
         # Define GENX objects
-        reference_direction_flow = line_rating * existing_lines_df[i, :Profile_Forward]
-        counter_direction_flow = line_rating * existing_lines_df[i, :Profile_Reverse]
+        reference_direction_flow = round(line_rating * existing_lines_df[i, :Profile_Forward], digits=3)
+        counter_direction_flow = round(line_rating * existing_lines_df[i, :Profile_Reverse], digits=3)  
         
         # Create the AreaInterchange
         area_interchange = AreaInterchange(;
-            name = line_psy,
-            available = true,
-            active_power_flow = 0.0,
-            from_area = from_area_o,
-            to_area = to_area_o,
+            name = line_psy, # string
+            available = true, # boolean
+            active_power_flow = 0.0, # float
+            from_area = from_area_o, # PSY area object
+            to_area = to_area_o, # PSY area object
             flow_limits = (
-                from_to = reference_direction_flow / sys_base_power,
-                to_from = counter_direction_flow / sys_base_power
+                from_to = round(reference_direction_flow / sys_base_power, digits=3),
+                to_from = round(counter_direction_flow / sys_base_power, digits=3)
             )
         )
         
@@ -203,19 +206,33 @@ function create_power_loads(demand_df::DataFrame, sys::System)
         # Get the bus name
         bus_name = get_name(bus)
         
-        # Calculate base_power as maximum demand across all weather years
+        # Calculate base_power as maximum demand across ALL weather years
         # Note: column name includes "_Demand" suffix
-        base_power = maximum(demand_df[!, Symbol(bus_name * "_Demand")])
+        max_power = round(maximum(demand_df[!, Symbol(bus_name * "_Demand")]), digits=2)
+        
+        # Handle case where max_power is 0
+        if max_power == 0.0
+            @info "Zero demand detected for bus $bus_name, setting base_power to 1.0 and per-unit attributes to 0.0"
+            base_power = 1.0
+            active_power = 0.0
+            reactive_power = 0.0
+            max_active_power = 0.0
+        else
+            base_power = max_power
+            active_power = 0.0
+            reactive_power = 0.0
+            max_active_power = 1.0
+        end
         
         # Create the PowerLoad object
         power_load = PowerLoad(;
             name = "Load_" * bus_name,
             available = true,
-            bus = bus,
-            active_power = 0.0,  # unitized by DEVICE base_power 
-            reactive_power = 0.0,  # unitized by DEVICE base_power 
+            bus = bus, # assign the bus object to the power load
+            active_power = active_power,  # unitized by DEVICE base_power 
+            reactive_power = reactive_power,  # unitized by DEVICE base_power 
             base_power = base_power, # MVA
-            max_active_power = 1.0,  # 1.0 unitized by DEVICE base_power 
+            max_active_power = max_active_power,  # unitized by DEVICE base_power 
             max_reactive_power = 0.0  # No reactive power limits
         )
         
@@ -233,9 +250,6 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
 
     for i in 1:count(!ismissing, thermal_df[:, "Resource"]) # loop through all thermal resources
 
-#=         # testing
-        i = 1 =#
-
         # retrieve name of thermal resource
         resource_name = thermal_df[i, :Resource]
 
@@ -243,7 +257,13 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
         @info "Processing thermal resource: $resource_name"
 
         # retrieve capacity of thermal resource
-        capacity_mw = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
+        capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+
+        # Skip if capacity is 0
+        if capacity_mw == 0.0
+            @info "Skipping thermal resource $resource_name due to zero capacity"
+            continue
+        end
 
         # retrieve min power of thermal resource (already in p.u.)
         min_power = round(thermal_df[i, :Min_Power], digits=3)
@@ -333,11 +353,11 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
             active_power = 0.0, # unitized by DEVICE base_power 
             reactive_power = 0.0, # unitized by DEVICE base_power 
             rating = 1.0, # unitized by DEVICE base_power
-            active_power_limits = (min = min_power, max = 1.0),
+            active_power_limits = (min = round(min_power, digits=3), max = 1.0),
             reactive_power_limits = nothing,
-            ramp_limits = (up = ramp_up/60, down = ramp_down/60), # Sienna units: MW/Min
+            ramp_limits = (up = round(ramp_up/60, digits=3), down = round(ramp_down/60, digits=3)), # Sienna units: MW/Min
             operation_cost = Op_Cost, # TO-DO  time series for varying fuel prices and fuel-related start costs
-            base_power = capacity_mw, # setting base power to nameplate capacity
+            base_power = capacity_mw, # setting base power equal to nameplate capacity
             time_limits = (up = MUT, down = MDT), # Hours, unaffected by per-unitization
             must_run = false, # To-Do assign must-run status to baseload non-dispatchable resources
             prime_mover_type = PM_type, # assign Prime Mover Type 
@@ -365,7 +385,13 @@ function create_VRE_objects(sys::System, vre_df::DataFrame, capacity_df::DataFra
         @info "Processing VRE resource: $resource_name"
 
         # retrieve capacity of VRE resource
-        capacity_mw = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
+        capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+
+        # Skip if capacity is 0
+        if capacity_mw == 0.0
+            @info "Skipping VRE resource $resource_name due to zero capacity"
+            continue
+        end
 
         # retrieve the zone number (GENX)
         zone_number = vre_df[i, :Zone]
@@ -398,13 +424,13 @@ function create_VRE_objects(sys::System, vre_df::DataFrame, capacity_df::DataFra
             available = true,
             bus = bus_object,
             active_power = 0.0, # unitized by DEVICE base_power 
-            reactive_power = 0.0, # unitized by DEVICE base_power 
+            reactive_power = 0.0, 
             rating = 1.0, # unitized by DEVICE base_power
             prime_mover_type = PM_type,
-            reactive_power_limits = (min = 0.0, max = 0.0), # No reactive power limits
+            reactive_power_limits = nothing, # No reactive power limits
             power_factor = 1.0, # Unity power factor
             operation_cost = Op_Cost,
-            base_power = capacity_mw # setting base power to nameplate capacity
+            base_power = round(capacity_mw, digits=3), # setting base power to nameplate capacity; DONT FORGET THE COMMA
         )
 
         # add renewable dispatch to vre_standards dictionary  
@@ -428,7 +454,13 @@ function create_btm_objects(sys::System, vre_df::DataFrame, capacity_df::DataFra
         @info "Processing BTM resource: $resource_name"
 
         # retrieve capacity of BTM resource
-        capacity_mw = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
+        capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+
+        # Skip if capacity is 0
+        if capacity_mw == 0.0
+            @info "Skipping BTM resource $resource_name due to zero capacity"
+            continue
+        end
 
         # retrieve the zone number (GENX)
         zone_number = btm_df[i, :Zone]
@@ -469,7 +501,7 @@ function create_btm_objects(sys::System, vre_df::DataFrame, capacity_df::DataFra
             prime_mover_type = PM_type,
             power_factor = 1.0, # Unity power factor
             # operation_cost = Op_Cost, # not available for RenewableNonDispatch
-            base_power = capacity_mw # setting base power to nameplate capacity
+            base_power = capacity_mw, # setting base power to nameplate capacity
         )
 
         # add renewable dispatch to vre_standards dictionary  
@@ -494,7 +526,13 @@ function create_Hydro_objects(sys::System, hydro_df::DataFrame, capacity_df::Dat
         @info "Processing hydro resource: $resource_name"
 
         # retrieve capacity of hydro resource
-        capacity_mw = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
+        capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+
+        # Skip if capacity is 0
+        if capacity_mw == 0.0
+            @info "Skipping hydro resource $resource_name due to zero capacity"
+            continue
+        end
 
         # retrieve min power of hydro resource (already in p.u.)
         min_power = round(hydro_df[i, :Min_Power], digits=3)
@@ -523,8 +561,10 @@ function create_Hydro_objects(sys::System, hydro_df::DataFrame, capacity_df::Dat
         )
 
         # ramp limits
-        ramp_up = round(hydro_df[i, :Ramp_Up_Percentage], digits=3) # GENX units %MW/hr
-        ramp_down = round(hydro_df[i, :Ramp_Dn_Percentage], digits=3) # GENX units %MW/hr
+        ramp_up = hydro_df[i, :Ramp_Up_Percentage] # GENX units %MW/hr
+        ramp_down = hydro_df[i, :Ramp_Dn_Percentage] # GENX units %MW/hr
+        ramp_up_sienna = round(ramp_up/60, digits=3) # Sienna units: MW/Min
+        ramp_down_sienna = round(ramp_down/60, digits=3) # Sienna units: MW/Min
 
         # define prime mover type using the key-value mapping from MoverTypesMapping.csv
         if !haskey(PM_type_dict, resource_name)
@@ -544,11 +584,11 @@ function create_Hydro_objects(sys::System, hydro_df::DataFrame, capacity_df::Dat
             rating = 1.0, # unitized by DEVICE base_power
             prime_mover_type = PM_type,
             active_power_limits = (min = min_power, max = 1.0),
-            reactive_power_limits = (min = 0.0, max = 0.0), # No reactive power limits
-            ramp_limits = (up = ramp_up/60, down = ramp_down/60), # Sienna units: MW/Min
+            reactive_power_limits = nothing, # No reactive power limits
+            ramp_limits = (up = ramp_up_sienna, down = ramp_down_sienna), # Sienna units: MW/Min
             time_limits = nothing, # units: Hours -> not defined in GenX
             operation_cost = Op_Cost,
-            base_power = capacity_mw # setting base power to nameplate capacity
+            base_power = capacity_mw, # setting base power to nameplate capacity
         )
 
         # add hydro dispatch to HydroDispatch_dict  
@@ -571,9 +611,21 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
         # Print current resource being processed
         @info "Processing storage resource: $resource_name"
 
+        # Skip if it's a pumped hydro unit
+        if haskey(PM_type_dict, resource_name) && PM_type_dict[resource_name] == "PS"
+            @info "Skipping pumped hydro resource $resource_name - will be handled separately"
+            continue
+        end
+
         # retrieve capacity of storage resource
-        power_capacity_mw = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap]
-        energy_capacity_mwh = capacity_df[capacity_df.Resource .== resource_name, :][1, :EndEnergyCap]
+        power_capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+        energy_capacity_mwh = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndEnergyCap], digits=3) 
+
+        # Skip if either power or energy capacity is 0
+        if power_capacity_mw == 0.0 || energy_capacity_mwh == 0.0
+            @info "Skipping storage resource $resource_name due to zero capacity (power: $power_capacity_mw MW, energy: $energy_capacity_mwh MWh)"
+            continue
+        end
 
         # retrieve the zone number (GENX)
         zone_number = storage_df[i, :Zone]
@@ -602,7 +654,7 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
             start_up = 0.0,
             shut_down = 0.0,
             energy_shortage_cost = 0.0, # Cost incurred by the model for being short of the energy target
-            energy_surplus_cost = 0.0 # Cost incurred by the model for surplus energy stored
+            energy_surplus_cost = 0.0, # Cost incurred by the model for surplus energy stored
         )
 
         # define prime mover type using the key-value mapping from MoverTypesMapping.csv
@@ -632,21 +684,21 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
             bus = bus_object,
             prime_mover_type = PM_type,
             storage_technology_type = ST_type,
-            storage_capacity = energy_capacity_mwh, #energy of the storage device 
-            storage_level_limits = (min = 0.0, max = 1.0),
-            initial_storage_capacity_level = 0.50, # 50% of the storage capacity
-            rating = 1.0, # unitized by DEVICE base_power
-            active_power = 0.0, # unitized by DEVICE base_power 
+            storage_capacity = power_capacity_mw == 0 ? 0.0 : round(energy_capacity_mwh/power_capacity_mw, digits=3),# unitized by device base power 
+            storage_level_limits = (min = 0.0, max = 1.0), # limits on SOC range 
+            initial_storage_capacity_level = 0.50, # initial SOC level 
+            rating = 1.0, # max output power rating; unitized by DEVICE base_power
+            active_power = 0.0, # initial active power output 
             input_active_power_limits = (min = 0.0, max = 1.0),
             output_active_power_limits = (min = 0.0, max = 1.0),
             efficiency = (in = charge_efficiency, out = discharge_efficiency),
             reactive_power = 0.0, # unitized by DEVICE base_power 
-            reactive_power_limits = (min = 0.0, max = 0.0), # No reactive power limits
+            reactive_power_limits = nothing, # No reactive power limits
             base_power = power_capacity_mw, # setting base power to nameplate capacity
             operation_cost = Op_Cost,
             conversion_factor = 1.0, # Conversion factor of storage_capacity to MWh, if different than 1.0.
             storage_target = 0.0, #  Storage target at the end of simulation as ratio of storage capacity
-            cycle_limits = 365 # Storage Maximum number of cycles per year
+            cycle_limits = 365, # Storage Maximum number of cycles per year
         )
 
         # add storage device to Storage_dict  
@@ -656,5 +708,41 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
     return Storage_dict
 end
 
+function system_capacity_query(unit_collection::Dict, paths::Dict)
+    # Initialize an empty DataFrame
+    df = DataFrame(Resource = String[], MW_capacity = Float64[])
 
+    # for each generator collection, loop through each unit w/in that collection
+    for (category, gen_collection) in unit_collection
+        if category == "StorageUnits" #batteries
+            for unit in gen_collection
+                if get_available(unit)  # Check if the unit is active
+                    name = get_name(unit)  # Get the generator's name
+                    capacity = get_output_active_power_limits(unit).max  # Get the max active discharge power (MW)
+
+                    # Append to DataFrame
+                    push!(df, (name, capacity))
+                else
+                # do nothing
+                end
+            end
+        else # all other generator types
+            for unit in gen_collection
+                if get_available(unit)  # Check if the unit is active
+
+                    name = get_name(unit)  # Get the generator's name
+                    capacity = get_max_active_power(unit)  # Get the max active power (MW)
+
+                    # Append to DataFrame
+                    push!(df, (name, capacity))
+                else
+                    #do nothing
+                end
+            end
+        end # if loop
+    end
+
+    #write df to csv
+    CSV.write(joinpath(paths[:data_dir], "nameplate_capacity.csv"), df);
+end
 

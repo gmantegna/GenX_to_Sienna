@@ -21,23 +21,16 @@ end
 function define_thermal_model(template_uc, WY)
     # Define custom DeviceModel for ThermalStandard with time-varying max_active_power
     thermal_model = DeviceModel(ThermalStandard, ThermalStandardUnitCommitment;
-        time_series_names = Dict(ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
 
     # assign the thermal model to the template_uc
     PowerSimulations.set_device_model!(template_uc, thermal_model)
-
-#=     # Define custom DeviceModel for ThermalStandard with time-varying max_active_power
-    thermal_model = DeviceModel(ThermalStandard, ThermalStandardUnitCommitment; time_series_names = Dict{Any, String}(
-                    PowerSimulations.FuelCostParameter => "fuel_price",
-                    PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power",))
-    PowerSimulations.set_device_model!(template_uc, thermal_model) =#
-
 end
 
 function define_hydro_model(template_uc, WY)
     # Define Hydro model
     hydro_model = DeviceModel(HydroDispatch,HydroDispatchRunOfRiver;
-        time_series_names = Dict(ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
     
     # assign the hydro model to the template_uc
     PowerSimulations.set_device_model!(template_uc, hydro_model)
@@ -46,7 +39,7 @@ end
 function define_load_model(template_uc, WY)
     # define the load model with time series
     load_model = DeviceModel(PowerLoad, StaticPowerLoad;
-        time_series_names = Dict(ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
     # Assign load model to template
     PowerSimulations.set_device_model!(template_uc, load_model)
 end
@@ -54,7 +47,7 @@ end
 function define_renewable_dispatch_model(template_uc, WY)
     # define the renewable dispatch model with time series
     renewable_dispatch_model = DeviceModel(RenewableDispatch, RenewableFullDispatch;
-        time_series_names = Dict(ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
 
     # Assign renewable dispatch model to template
     PowerSimulations.set_device_model!(template_uc, renewable_dispatch_model)
@@ -63,7 +56,7 @@ end
 function define_renewable_non_dispatch_model(template_uc, WY)
     # define the renewable non-dispatch model with time series
     renewable_non_dispatch_model = DeviceModel(RenewableNonDispatch, FixedOutput;
-        time_series_names = Dict(ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
 
     # Assign renewable non-dispatch model to template
     PowerSimulations.set_device_model!(template_uc, renewable_non_dispatch_model)
@@ -74,14 +67,20 @@ end
 #################################
 function define_branch_model(template_uc)
     # define the branch model to be assigned to our AreaInterchanges
-    # static branch -> adds unbounded flow variables and use flow constraints
-    PowerSimulations.set_device_model!(template_uc, AreaInterchange, StaticBranch)
+    # static branch -> adds unbounded flow variables and uses flow constraints
+
+    # Q: how would i add slack variables to this?
+    AI_branch = DeviceModel(AreaInterchange, StaticBranch, use_slacks=false)
+
+    PowerSimulations.set_device_model!(template_uc, AI_branch)
 end
+
+
 
 #################################
 # Define Network Model in PSI 
 #################################
-function define_network_model(template_uc)
+function define_AreaNetwork_model(template_uc)
     # define our area balance power model to honor our zonal topology bc default in Sienna is copperplate
 
     Zonal_AI = NetworkModel(
@@ -92,6 +91,19 @@ function define_network_model(template_uc)
     set_network_model!(template_uc, Zonal_AI)
 end
 
+function define_CopperPlate_model(template_uc)
+    # define our area balance power model to honor our zonal topology bc default in Sienna is copperplate
+
+    CopperSheet = NetworkModel(
+        CopperPlatePowerModel, #Approximation to represent inter-area flow with each area represented as a single node.
+        use_slacks=true, 
+    )
+    #assign the area_interchange object from above as our network model
+    set_network_model!(template_uc, CopperSheet)
+end
+
+
+
 #################################
 # Define Service Model in PSI 
 #################################
@@ -101,7 +113,7 @@ end
 #################################
 # Define Simulation Model in PSI 
 #################################
-function build_and_execute_simulation(template_uc, sys::System, paths::Dict; decision_name::String)
+function build_and_execute_simulation(template_uc::ProblemTemplate, sys::System, paths::Dict, decision_name::String)
     # initialize our decision model
     UC_decision = DecisionModel(
         template_uc,

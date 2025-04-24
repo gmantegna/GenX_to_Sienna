@@ -2,7 +2,7 @@
 
 julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "2ddaeb3299232edd23c10b5896355068114c01a7"
+project_hash = "8130ef70c60f77a2ecc67cdbaeb8e2992d490fa6"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
@@ -747,9 +747,9 @@ version = "0.12.1"
 
 [[deps.PowerSimulations]]
 deps = ["CSV", "DataFrames", "DataStructures", "Dates", "Distributed", "DocStringExtensions", "HDF5", "InfrastructureSystems", "InteractiveUtils", "JSON3", "JuMP", "LinearAlgebra", "Logging", "MathOptInterface", "PowerFlows", "PowerModels", "PowerNetworkMatrices", "PowerSystems", "PrettyTables", "ProgressMeter", "Serialization", "TimeSeries", "TimerOutputs"]
-git-tree-sha1 = "f90e69b5933bb4a16a7950e795590b2accfb1dcf"
+git-tree-sha1 = "37f201802731b6d310a332e8b69f1cf8008e8994"
 uuid = "e690365d-45e2-57bb-ac84-44ba829e73c4"
-version = "0.30.0"
+version = "0.30.1"
 
 [[deps.PowerSystems]]
 deps = ["CSV", "DataFrames", "DataStructures", "Dates", "DocStringExtensions", "InfrastructureSystems", "InteractiveUtils", "JSON3", "LinearAlgebra", "Logging", "PowerFlowData", "PrettyTables", "TimeSeries", "UUIDs", "Unicode", "YAML"]

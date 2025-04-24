@@ -11,7 +11,8 @@ using Dates
 using Statistics
 using StorageSystemsSimulations
 using HydroPowerSimulations
-using DataStructures 
+using DataStructures
+using Logging
 
 ##########################
 # Include helper functions
@@ -22,15 +23,19 @@ include(joinpath(@__DIR__, "time_series_builder.jl"))
 include(joinpath(@__DIR__, "simulation_builder.jl"))
 
 ##########################
-# Define Paths
+# Model Administration
 ##########################
+# Define Path Directories
 paths = initialize_paths_and_inputs()
+
+# Define logger
+logger = configure_logging(console_level=Logging.Info);
 
 ##########################
 # Initialize System
 ##########################
 # initialize system with base power of 100MVA (aides in per unit calculations)
-sys = System(100.0)
+sys = System(1.0) # 100 is the default but we are using 1.0 bc defining in natural units
 sys_base_power = get_base_power(sys)
 get_units_base(sys)
 set_units_base_system!(sys, "NATURAL_UNITS")
@@ -126,13 +131,17 @@ end
 # let's check our work
 get_components(Line, sys)
 show_components(Line, sys)
-active_component = collect(get_components(Line, sys))[1]
+# define collection of lines
+lines = collect(get_components(Line, sys));
+
+active_component = lines[1]
 get_name(active_component)
 get_arc(active_component)
 get_rating(active_component)
 
-# define collection of lines
-lines = collect(get_components(Line, sys));
+# Create and write line parameters to CSV
+file_path = joinpath(paths[:data_dir], "line_parameters.csv")
+create_line_parameters_df(lines, file_path)
 
 # Area Interchanges
 ##########################
@@ -152,14 +161,19 @@ end =#
 # let's check our work
 get_components(AreaInterchange, sys)
 show_components(AreaInterchange, sys)
-active_component = collect(get_components(AreaInterchange, sys))[1]
+# define collection of area interchanges
+area_interchanges = collect(get_components(AreaInterchange, sys))
+
+active_component = area_interchanges[1]
 get_name(active_component)
 get_from_area(active_component)
 get_to_area(active_component)
 get_flow_limits(active_component)
+get_flow_limits(active_component).from_to
 
-# define collection of area interchanges
-area_interchanges = collect(get_components(AreaInterchange, sys))
+# Create and write area interchange parameters to CSV
+file_path = joinpath(paths[:data_dir], "area_interchange_parameters.csv")
+create_area_interchange_parameters_df(area_interchanges, file_path)
 
 # Transmission Interfaces
 ##########################
@@ -177,13 +191,16 @@ end
 # let's check our work
 get_components(TransmissionInterface, sys)
 show_components(TransmissionInterface, sys)
-active_component = collect(get_components(TransmissionInterface, sys))[1]
+# define collection of transmission interfaces
+transmission_interfaces = collect(get_components(TransmissionInterface, sys))
+active_component = transmission_interfaces[1]
 get_name(active_component)
 get_active_power_flow_limits(active_component)
 get_direction_mapping(active_component)
 
-# define collection of transmission interfaces
-transmission_interfaces = collect(get_components(TransmissionInterface, sys))
+# Create and write transmission interface parameters to CSV
+file_path = joinpath(paths[:data_dir], "transmission_interface_parameters.csv");
+create_transmission_interface_parameters_df(sys, paths);
 
 ##########################
 # Define PowerLoads 
@@ -196,7 +213,7 @@ demand_data_path = joinpath(paths[:data_dir], "system", "Demand_data.csv")
 demand_ts = process_demand_data(demand_data_path, zone_dict)
 
 # Let's create our power loads dictionary
-power_loads_dict = create_power_loads(demand_ts, sys)
+power_loads_dict = create_power_loads(demand_ts, sys);
 
 # Now let's add our PowerLoad objects to the system
 for (pl_name, pl_object) in power_loads_dict
@@ -207,7 +224,26 @@ end
 get_components(PowerLoad, sys)
 show_components(PowerLoad, sys)
 active_component = get_component(PowerLoad, sys, "Load_PGE")
+get_name(active_component)
 get_base_power(active_component)
+get_active_power(active_component)
+get_bus(active_component)
+
+# define collection of power loads
+power_loads = collect(get_components(PowerLoad, sys))
+
+# Create and write power load parameters to CSV
+file_path = joinpath(paths[:data_dir], "powerload_parameters.csv");
+create_powerload_parameters_df(sys, paths);
+
+
+# remove all powerloads from system
+#= for Power_Load in collect(get_components(PowerLoad, sys))
+    remove_component!(sys, Power_Load)
+end =#
+
+#= # let's write the power loads to a csv file
+CSV.write(joinpath(paths[:data_dir], "Power_loads.csv"), demand_ts) =#
 
 ##########################
 # Define Fuel Objects 
@@ -216,10 +252,10 @@ get_base_power(active_component)
 fuel_mapping_df = CSV.read(joinpath(paths[:data_dir], "FuelMapping.csv"), DataFrame)
 
 ##########################
-# Define Generators 
+# Define Generators / Storage Devices 
 ##########################
 
-# General Gen-Related Info 
+# General Info 
 ##########################
 # retrieve capacity data
 capacity_df = CSV.read(joinpath(paths[:data_dir], "results", "capacity.csv"), DataFrame);
@@ -238,12 +274,17 @@ storage_type_dict = Dict((row.Key) => row.Value for row in eachrow(storage_type_
 thermal_df = CSV.read(joinpath(paths[:data_dir], "resources", "Thermal.csv"), DataFrame);
 
 # define thermal generator objects
-ThermalStandard_dict = create_ThermalStandard_objects(sys, thermal_df, capacity_df, PM_type_dict, fuel_mapping_df, zone_dict)
+ThermalStandard_dict = create_ThermalStandard_objects(sys, thermal_df, capacity_df, PM_type_dict, fuel_mapping_df, zone_dict);
     
 # add thermal generators to system
 for (thermal_name, thermal_object) in ThermalStandard_dict
     add_component!(sys, thermal_object)
 end
+
+#= # remove all thermal generators from system
+for Thermal_Standard in collect(get_components(ThermalStandard, sys))
+    remove_component!(sys, Thermal_Standard)
+end =#
 
 # define collection of thermal generators
 ThermalStandard_generators = collect(get_components(ThermalStandard, sys))
@@ -253,12 +294,19 @@ active_component = ThermalStandard_generators[5]
 
 get_name(active_component)
 get_base_power(active_component) #installed nameplate capacity (MW)   
-show_time_series(active_component) # no time series attached to this component (yet)
+get_bus(active_component)
+get_rating(active_component)
+get_active_power_limits(active_component)
+get_time_limits(active_component)
+get_fuel(active_component)
 active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+
 show_time_series(active_component)
 # get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
 # get_time_series_array(DeterministicSingleTimeSeries, active_component, "fuel_price")
 
+#check to make sure no units with base power of 0 are in the system
+show_components(ThermalStandard, sys, [:base_power])
 
 # Renewable Dispatch Generators (i.e., VRE) 
 ##########################
@@ -284,6 +332,14 @@ get_base_power(active_component) #installed nameplate capacity (MW)
 show_time_series(active_component) # no time series attached to this component (yet)
 active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
 show_time_series(active_component) # no time series attached to this component (yet)
+
+#check to make sure no units with base power of 0 are in the system
+show_components(RenewableDispatch, sys, [:base_power])
+
+#= # remove all RenewableDispatch from system
+for Renewable_Dispatch in collect(get_components(RenewableDispatch, sys))
+    remove_component!(sys, Renewable_Dispatch)
+end =#
 
 # Renewable NonDispatch Generators (i.e., BTM) 
 ##########################
@@ -314,6 +370,9 @@ else
     # do nothing
 end
 
+#check to make sure no units with base power of 0 are in the system
+show_components(RenewableNonDispatch, sys, [:base_power])
+
 # Hydro Generators 
 ##########################
 # read in hydro generator data
@@ -339,6 +398,14 @@ show_time_series(active_component) # no time series attached to this component (
 active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
 show_time_series(active_component) # no time series attached to this component (yet)
 
+# check to make sure no units with base power of 0 are in the system
+show_components(HydroDispatch, sys, [:base_power])
+
+# remove all HydroDispatch from system
+#= for Hydro_Dispatch in collect(get_components(HydroDispatch, sys))
+    remove_component!(sys, Hydro_Dispatch)
+end =#
+
 # Storage Resources 
 ##########################
 # read in storage data      
@@ -353,16 +420,46 @@ for (storage_name, storage_object) in Storage_dict
 end
 
 # define collection of storage generators
-Storage_objects = collect(get_components(Storage, sys));
+Storage_objects = collect(get_components(EnergyReservoirStorage, sys));
 
 # Check your work
-active_component = Storage_objects[5]    
-
+active_component = Storage_objects[5]
 get_name(active_component)
-get_base_power(active_component) #installed nameplate capacity (MW)   
-show_time_series(active_component) # no time series attached to this component (yet)
-active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+get_base_power(active_component) #installed nameplate capacity (MW) 
+get_storage_capacity(active_component)    
+get_storage_level_limits(active_component)
+get_initial_storage_capacity_level(active_component)
+get_efficiency(active_component)
+get_input_active_power_limits(active_component)
+get_output_active_power_limits(active_component)
+get_rating(active_component)
+active_component.operation_cost # check operation cost
 
+# check to make sure no units with base power of 0 are in the system
+show_components(EnergyReservoirStorage, sys, [:base_power])
+
+# remove all storage objects from system
+#= for Storage in collect(get_components(Storage, sys))
+    remove_component!(sys, Storage)
+end =#
+
+# Troubleshooting: Create DataFrame with storage parameters and write to CSV
+file_path = joinpath(paths[:data_dir], "storage_parameters.csv");
+create_storage_parameters_df(Storage_objects, file_path);
+
+###########################
+# Query Nameplate Capacity of System
+###########################
+# Retrieve all generator-type components in one go
+all_generators = collect(get_components(Generator, sys));
+all_storage = collect(get_components(Storage, sys));
+
+# Define collections to iterate over
+unit_collections = Dict(
+    "GenUnits" => all_generators,
+    "StorageUnits" => all_storage)
+
+system_capacity_query(unit_collections, paths);
 
 ##########################
 # Define time series for PSY objects
@@ -371,18 +468,23 @@ active_component.operation_cost #note how fuel_cost has a fixed value specified 
 # General
 ##########################
 # define file_path 
-generator_variability_data_path = joinpath(paths[:data_dir], "system", "Generators_variability.csv")
+generator_variability_data_path = joinpath(paths[:data_dir], "system", "Generators_variability.csv");
 
-# call the function to generate the demand timeseries df
+# call the function to generate the generator profile timeseries df
 gen_variability_df = process_generator_variability_data(generator_variability_data_path)
 
-# let's write the gen_variability_df to a csv file
-CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variability_df)
+#= # let's write the gen_variability_df to a csv file
+CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variability_df) =#
 
 # Power Loads
 ##########################
 # first let's create our PSI timeseries objects and store them in a container structured as a nested dictionary
 PL_ts_container = create_demand_PSY_timeseries(demand_ts, power_loads_dict)
+
+#spot check the time series
+active_ts = PL_ts_container["PGE"]["1998"]
+active_ts.name
+active_ts.data
 
 # Now we add those PSY timeseries to the PowerLoad objects in the system
 for (device_name, year_ts_dict) in PL_ts_container
@@ -413,7 +515,7 @@ get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ig
 renewable_ts_container = create_Renew_D_PSY_timeseries(gen_variability_df, Renew_D_generators)
 
 # spot check the time series
-active_ts = renewable_ts_container["Idaho_Wind_PGE"]["1998"]
+active_ts = renewable_ts_container["Southern_NV_Eldorado_Solar_SCE"]["1998"]
 active_ts.name
 active_ts.data
 
@@ -436,7 +538,7 @@ for (resource_name, year_ts_dict) in renewable_ts_container
 end
 
 # Let's check our work
-active_object = Renew_D_generators[1]
+active_object = Renew_D_generators[5]
 show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
@@ -497,7 +599,7 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 ThermalStandard_ts_container = create_ThermalStandard_PSY_timeseries(gen_variability_df,ThermalStandard_generators)
 
 # spot check the time series
-active_ts = ThermalStandard_ts_container["CAISO_Aero_CT_PGE"]["1998"]
+active_ts = ThermalStandard_ts_container["CAISO_CCGT1_PGE"]["1998"]
 active_ts.name
 active_ts.data
 
@@ -519,7 +621,7 @@ for (resource_name, year_ts_dict) in ThermalStandard_ts_container
 end
 
 # Let's check our work
-active_object = ThermalStandard_generators[1]
+active_object = ThermalStandard_generators[5]
 show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
@@ -602,6 +704,9 @@ oprsv_zones = CSV.read(joinpath(paths[:data_dir], "oprsv_zones.csv"), DataFrame)
 ##########################
 # Define PowerSimulations.jl (PSI) template and model 
 ##########################
+##########################
+# Define PowerSimulations.jl (PSI) template and model 
+##########################
 # define run_type
 run_type = "Deterministic"
 
@@ -615,60 +720,103 @@ else
     @warn "Incorrect setting for run_type; $run_type is not a valid option"
 end 
 
-# Iterate over each weather year
-for wy in weather_years
-    # Generate strings for the current year
-    wy = 1998
+wy = weather_years
 
-    if run_type == "Deterministic"
+ #assign name
+ decision_name = "deterministic_$wy"
 
-        #assign name
-        uc_decision_name = "deterministic_$wy"
+ # Create an empty model reference
+ template_uc = ProblemTemplate()
 
-        # Create an empty model reference
-        template_uc = ProblemTemplate()
+ # Define non-weather related Device Models
+ ##########################
+ # storage
+ define_storage_model(template_uc)
 
-        # Define non-weather related Device Models
-        ##########################
-        # storage
-        define_storage_model(template_uc)
+ # Define weather-dependent Device Models
+ ##########################
+ # thermal
+ define_thermal_model(template_uc, wy)
 
-        # Define weather-dependent Device Models
-        ##########################
-        # thermal
-        define_thermal_model(template_uc, wy)
+ # hydro
+ define_hydro_model(template_uc, wy)
 
-        # hydro
-        define_hydro_model(template_uc, wy)
+ # load
+ define_load_model(template_uc, wy)
 
-        # load
-        define_load_model(template_uc, wy)
+ # renewable dispatch
+ define_renewable_dispatch_model(template_uc, wy)
 
-        # renewable dispatch
-        define_renewable_dispatch_model(template_uc, wy)
+ # renewable non-dispatch
+ define_renewable_non_dispatch_model(template_uc, wy)
 
-        # renewable non-dispatch
-        define_renewable_non_dispatch_model(template_uc, wy)
+ # Define branch model
+ ###########################
+ define_branch_model(template_uc)
 
-        # Define branch model
-        define_branch_model(template_uc)
+ # Define network model
+ ###########################
+ # CopperPlate
+ # define_CopperPlate_model(template_uc)
 
-        # Define network model
-        define_network_model(template_uc)
+ # AreaInterchange
+ define_AreaNetwork_model(template_uc)
 
-    elseif run_type == "Monte_Carlo"
-        # do nothing
-        # TO-DO: layer in Sienna-PRAS Interface
-    else
-        @warn "Incorrect setting for run_type; $run_type is not a valid option"
-    end
+
+#################################
+# Define Simulation Model in PSI 
+#################################
+# initialize our decision model
+UC_decision = DecisionModel(
+    template_uc,
+    sys;
+    name = decision_name,
+    optimizer = optimizer_with_attributes(Gurobi.Optimizer, "MIPGap" => 1e-2),
+    system_to_file = false, # write the json and hf files
+    initialize_model = true, # Q: what does this do?
+    optimizer_solve_log_print = true, #solver output
+    direct_mode_optimizer = true, # performance thing; default is true; set it false if you have specific need
+    rebuild_model = false, # never have to use this, R&D thing
+    store_variable_names = true,
+    calculate_conflict = true, #infeasibility (gurobi only)
+    export_optimization_model = false, # this exports the LP (location is...)
+)
+
+# Initialize Simulation Model(s)
+sim_model = SimulationModels(
+    decision_models = [UC_decision],
+)
+
+# Initialize Simulation Sequence
+sim_sequence = SimulationSequence(
+    models = sim_model,
+)
+
+# Define the simulation
+sim = Simulation(
+    name = "test-sim",
+    steps = 3,  # Steps in your simulation
+    models = sim_model,
+    sequence = sim_sequence,
+    simulation_folder = mktempdir(paths[:output_dir_base], cleanup = true),
+)
+
+# Build the simulation folder
+build!(sim; console_level = Logging.Info,)
+
+# Execute the simulation
+execute!(sim, enable_progress_bar = true)
+
+
+
+
 
     ###########################
     # Build and Execute Simulation
     ###########################
     get_units_base(sys)
     set_units_base_system!(sys, "NATURAL_UNITS")
-    sim, UC_decision = build_and_execute_simulation(template_uc, sys, paths; decision_name=uc_decision_name);
+    sim, UC_decision = build_and_execute_simulation(template_uc, sys, paths, uc_decision_name)
 
     # Print a message to indicate that the simulation is complete
     println("Simulation completed for: $uc_decision_name")
@@ -695,6 +843,6 @@ for wy in weather_years
 
     # export the results
     query_write_export_results(sim, file_path, uc_decision_name)        
-end
+
 
 end # module
