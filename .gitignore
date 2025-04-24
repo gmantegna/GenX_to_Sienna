@@ -3,3 +3,9 @@ results*/*
 .ipynb_checkpoints/*
 src/*.out
 .DS_Store
+
+#working files
+power-systems.log
+src/GenX_to_Sienna_FPA.jl
+src/GenX_to_Sienna_RT.jl
+src/simulation_builder_simple.jl
