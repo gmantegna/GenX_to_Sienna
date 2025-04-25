@@ -447,6 +447,44 @@ end =#
 file_path = joinpath(paths[:data_dir], "storage_parameters.csv");
 create_storage_parameters_df(Storage_objects, file_path);
 
+# Pumped Hydro Storage Resources 
+##########################
+
+# define storage generator objects
+PumpedHydro_dict = create_pumped_hydro_objects(sys, storage_df, capacity_df, PM_type_dict, zone_dict)   
+
+# add storage generators to system
+for (PHS_name, PHS_object) in PumpedHydro_dict
+    add_component!(sys, PHS_object)
+end
+
+# define collection of storage generators
+PHS_objects = collect(get_components(HydroPumpedStorage, sys));
+
+# Check your work
+active_component = PHS_objects[5]
+get_name(active_component)
+get_base_power(active_component) #installed nameplate capacity (MW) 
+get_storage_capacity(active_component)
+get_initial_storage(active_component)
+get_pump_efficiency(active_component)
+get_active_power_limits(active_component)
+get_rating(active_component)
+active_component.operation_cost # check operation cost
+
+# check to make sure no units with base power of 0 are in the system
+show_components(HydroPumpedStorage, sys, [:base_power])
+
+# remove all PHS_objects from system
+#= for PHS in collect(get_components(HydroPumpedStorage, sys))
+    remove_component!(sys, PHS)
+end =#
+
+# Troubleshooting: Create DataFrame with storage parameters and write to CSV
+file_path = joinpath(paths[:data_dir], "PHS_parameters.csv");
+create_pumped_hydro_parameters_df(PHS_objects, file_path);
+
+
 ###########################
 # Query Nameplate Capacity of System
 ###########################
@@ -665,8 +703,9 @@ ts_size = get_time_series_keys(active_object).size
 get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
 get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
 
-# remove time series (nuclear option)
-#remove_time_series!(sys, SingleTimeSeries)
+# Pumped Hydro  Generators
+##########################
+# GENX has this pinned at 1 for all timesteps across all weather years; therefore not assigning any time series to the PHS objects
 
 
 #################################
@@ -704,9 +743,6 @@ oprsv_zones = CSV.read(joinpath(paths[:data_dir], "oprsv_zones.csv"), DataFrame)
 ##########################
 # Define PowerSimulations.jl (PSI) template and model 
 ##########################
-##########################
-# Define PowerSimulations.jl (PSI) template and model 
-##########################
 # define run_type
 run_type = "Deterministic"
 
@@ -722,45 +758,45 @@ end
 
 wy = weather_years
 
- #assign name
- decision_name = "deterministic_$wy"
+#assign name
+decision_name = "deterministic_$wy"
 
- # Create an empty model reference
- template_uc = ProblemTemplate()
+# Create an empty model reference
+template_uc = ProblemTemplate()
 
- # Define non-weather related Device Models
- ##########################
- # storage
- define_storage_model(template_uc)
+# Define non-weather related Device Models
+##########################
+# storage
+define_storage_model(template_uc)
 
- # Define weather-dependent Device Models
- ##########################
- # thermal
- define_thermal_model(template_uc, wy)
+# Define weather-dependent Device Models
+##########################
+# thermal
+define_thermal_model(template_uc, wy)
 
- # hydro
- define_hydro_model(template_uc, wy)
+# hydro
+define_hydro_model(template_uc, wy)
 
- # load
- define_load_model(template_uc, wy)
+# load
+define_load_model(template_uc, wy)
 
- # renewable dispatch
- define_renewable_dispatch_model(template_uc, wy)
+# renewable dispatch
+define_renewable_dispatch_model(template_uc, wy)
 
- # renewable non-dispatch
- define_renewable_non_dispatch_model(template_uc, wy)
+# renewable non-dispatch
+define_renewable_non_dispatch_model(template_uc, wy)
 
- # Define branch model
- ###########################
- define_branch_model(template_uc)
+# Define branch model
+###########################
+define_branch_model(template_uc)
 
- # Define network model
- ###########################
- # CopperPlate
- # define_CopperPlate_model(template_uc)
+# Define network model
+###########################
+# CopperPlate
+# define_CopperPlate_model(template_uc)
 
- # AreaInterchange
- define_AreaNetwork_model(template_uc)
+# AreaInterchange
+define_AreaNetwork_model(template_uc)
 
 
 #################################
@@ -798,51 +834,96 @@ sim = Simulation(
     steps = 3,  # Steps in your simulation
     models = sim_model,
     sequence = sim_sequence,
-    simulation_folder = mktempdir(paths[:output_dir_base], cleanup = true),
+    simulation_folder = mktempdir(paths[:sienna_simulation_dir], cleanup = true),
 )
 
 # Build the simulation folder
-build!(sim; console_level = Logging.Info,)
+build!(sim; console_level = Logging.Info,) # this will give us a "built" build status; run status still "initialized"
 
 # Execute the simulation
-execute!(sim, enable_progress_bar = true)
+execute!(sim, enable_progress_bar = true) # run status will now be "successfully_finalized" if successful
+
+# Print a message to indicate that the simulation is complete
+println("Simulation completed for: $decision_name")
+
+###########################
+# Export the Results
+###########################
+results_file_path = joinpath(paths[:sienna_results_dir], "results_$wy")
+simulation_file_path = paths[:sienna_simulation_dir]
 
 
+# check if results folder directory exists; if not, create it
+if !ispath(results_file_path)
+    mkpath(results_file_path)
+else
+    # do nothing
+end
+
+# check if simulation folder directory exists; if not, create it
+if !ispath(simulation_file_path)
+    mkpath(simulation_file_path)
+else
+    # do nothing
+end
+
+# export the results
+# query_write_export_results(sim, file_path, uc_decision_name)
+
+###########################
+# Query Results
+###########################
+sim_results = SimulationResults(sim)
+results = get_decision_problem_results(sim_results, decision_name) 
+
+# Input TimeSeries Parameters
+load_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__PowerLoad")
+thermal_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__ThermalStandard")
+renewDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableDispatch")
+renewNonDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableNonDispatch") # Sienna doesnt store nonDispatch
+hydro_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch")
+
+# Output Realized Generation Values
+thermal_active_power = read_realized_variable(results, "ActivePowerVariable__ThermalStandard")
+renewDispatch_active_power = read_realized_variable(results, "ActivePowerVariable__RenewableDispatch")
+hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch")
+storage_charge = read_realized_variable(results, "ActivePowerInVariable__EnergyReservoirStorage")
+storage_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
 
 
+# combine all FTM generators
+gen_active_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
 
-    ###########################
-    # Build and Execute Simulation
-    ###########################
-    get_units_base(sys)
-    set_units_base_system!(sys, "NATURAL_UNITS")
-    sim, UC_decision = build_and_execute_simulation(template_uc, sys, paths, uc_decision_name)
+# Output Realized TX flows
+AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
+# TO-DO: Activate interfaces for SFCs
 
-    # Print a message to indicate that the simulation is complete
-    println("Simulation completed for: $uc_decision_name")
+# Output Expressions
+power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
 
-    ###########################
-    # Export the Results
-    ###########################
-    if run_type == "Deterministic"
-        # define file paths to store (processed) results for the active year
-        file_path = (paths[:scenario_dir_d])
-    elseif run_type == "Monte_Carlo"
-        # define file paths to store (processed) results for the active weather yr
-        file_path = joinpath(paths[:scenario_dir_s], "results_WY_$year_str")
-    else
-        @warn "Incorrect setting for run_type; $run_type is not a valid option"
-    end 
+# Get Production Costs
+pc_thermal = read_realized_expression(results, "ProductionCostExpression__ThermalStandard")
+pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch")
+pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch")
+pc_all = hcat(pc_thermal,select(pc_renewable, Not(1)), select(pc_hydro, Not(1)))
+
+###########################
+# Export Results
+###########################
+# Define output paths and write dataframes to CSV
+CSV.write(joinpath(results_file_path, "load_active_power.csv"), load_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "thermal_parameters.csv"), thermal_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "FTM_renewable_parameters.csv"), renewDispatch_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "BTM_active_power.csv"), renewNonDispatch_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "hydro_parameter.csv"), hydro_parameter); # Input time series values
+
+CSV.write(joinpath(results_file_path, "FTM_generator_active_power.csv"), gen_active_power);
+CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge);
+CSV.write(joinpath(results_file_path, "storage_discharge.csv"), storage_discharge);
+CSV.write(joinpath(results_file_path, "AreaInterchange_flow.csv"), AreaInterchange_flow);
+CSV.write(joinpath(results_file_path, "power_balance.csv"), power_balance);
+CSV.write(joinpath(results_file_path, "production_costs.csv"), all_pc);    
+
     
-    # check if folder directory exists; if not, create it
-    if !ispath(file_path)
-        mkpath(file_path)
-    else
-        # do nothing
-    end
-
-    # export the results
-    query_write_export_results(sim, file_path, uc_decision_name)        
-
 
 end # module

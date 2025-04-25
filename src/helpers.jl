@@ -14,19 +14,24 @@ function initialize_paths_and_inputs()
 
     # Define key directories
     data_dir = joinpath(root_dir, "Sonoma", "GENX_Output") # GenX input files
-    output_dir_base = joinpath(root_dir, "Sonoma", "Sienna_Outputs") # Base directory for outputs
+    sienna_results_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","output_results") # sienna processed results 
+    sienna_simulation_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","simulation_files") # Sienna simulation results
     
     # Ensure output directory exists
-    if !ispath(output_dir_base)
-        mkpath(output_dir_base)
+    if !ispath(sienna_results_dir)
+        mkpath(sienna_results_dir)
+    end
+
+    if !ispath(sienna_simulation_dir)
+        mkpath(sienna_simulation_dir)
     end
 
     # Return all paths as a dictionary for easy access
     return Dict(
         :root_dir => root_dir,
         :data_dir => data_dir,
-        :output_dir_base => output_dir_base,
-        # :genx_capacity_results => joinpath(data_dir, "results")  # This is a constant from the original code
+        :sienna_results_dir => sienna_results_dir,
+        :sienna_simulation_dir => sienna_simulation_dir
     )
 end
 
@@ -388,3 +393,99 @@ function create_transmission_interface_parameters_df(sys::System, paths::Dict)
     CSV.write(joinpath(paths[:data_dir], "transmission_interface_parameters.csv"), df)
 end
 
+function create_pumped_hydro_parameters_df(pumped_hydro_objects::Vector{HydroPumpedStorage}, output_path::String)
+    # Create DataFrame with column names matching the parameters we want to check
+    df_pumped_hydro = DataFrame(
+        name = String[],
+        base_power = Float64[],
+        storage_capacity_up = Float64[],
+        storage_capacity_down = Float64[],
+        initial_storage_up = Float64[],
+        initial_storage_down = Float64[],
+        pump_efficiency = Float64[],
+        active_power_limits_min = Float64[],
+        active_power_limits_max = Float64[],
+        rating = Float64[]
+    )
+
+    # Loop through all pumped hydro devices and add their parameters
+    for ph in pumped_hydro_objects
+        push!(df_pumped_hydro, (
+            get_name(ph),
+            get_base_power(ph),
+            get_storage_capacity(ph).up,
+            get_storage_capacity(ph).down,
+            get_initial_storage(ph).up,
+            get_initial_storage(ph).down,
+            get_pump_efficiency(ph),
+            get_active_power_limits(ph).min,
+            get_active_power_limits(ph).max,
+            get_rating(ph)
+        ))
+    end
+
+    # Write the DataFrame to a CSV file
+    CSV.write(output_path, df_pumped_hydro)
+    
+    return df_pumped_hydro
+end
+
+function query_write_export_results(sim::Simulation, path_scenario::String, uc_decision_name::String)
+    ###########################
+    # Query Results
+    ###########################
+    sim_results = SimulationResults(sim)
+    results = get_decision_problem_results(sim_results, uc_decision_name) # UC stage result metadata
+
+    # Input TimeSeries Parameters
+    load_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__PowerLoad")
+    thermal_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__ThermalStandard")
+    renewDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableDispatch")
+    renewNonDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableNonDispatch") # Sienna doesnt store nonDispatch
+    hydro_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch")
+
+    # Output Realized Generation Values
+    thermal_active_power = read_realized_variable(results, "ActivePowerVariable__ThermalStandard")
+    renewDispatch_active_power = read_realized_variable(results, "ActivePowerVariable__RenewableDispatch")
+    # renewNonDispatch_active_power = read_realized_variable(results, "ActivePowerVariable__RenewableNonDispatch") Q: why isnt this available in results; bc no dispatch?
+    hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch")
+    storage_charge = read_realized_variable(results, "ActivePowerInVariable__EnergyReservoirStorage")
+    storage_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
+
+    # combine all FTM generators
+    gen_active_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
+
+    # Output Realized TX flows
+    tx_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
+
+    # Output Expressions
+    power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
+
+    # Get Production Costs
+    pc_thermal = read_realized_expression(results, "ProductionCostExpression__ThermalStandard")
+    pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch")
+    pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch")
+    #all_pc = hcat(pc_thermal,select(pc_renewable, Not(1)))
+    all_pc = hcat(pc_thermal,select(pc_renewable, Not(1)), select(pc_hydro, Not(1)))
+
+    ###########################
+    # Export Results
+    ###########################
+    # Define output paths and write dataframes to CSV
+    CSV.write(joinpath(path_scenario, "load_active_power.csv"), load_parameter) # Input time series values
+    CSV.write(joinpath(path_scenario, "FTM_renewable_parameters.csv"), renewDispatch_parameter) # Input time series values
+    CSV.write(joinpath(path_scenario, "thermal_parameters.csv"), thermal_parameter) # Input time series values
+    CSV.write(joinpath(path_scenario, "hydro_parameter.csv"), hydro_parameter) # Input time series values
+    CSV.write(joinpath(path_scenario, "BTM_active_power.csv"), renewNonDispatch_parameter) # Input time series values
+
+    CSV.write(joinpath(path_scenario, "FTM_renewable_active_power.csv"), renewDispatch_active_power)
+    CSV.write(joinpath(path_scenario, "thermal_active_power.csv"), thermal_active_power)
+    CSV.write(joinpath(path_scenario, "FTM_generator_active_power.csv"), gen_active_power)
+    CSV.write(joinpath(path_scenario, "tx_flow.csv"), tx_flow)
+    CSV.write(joinpath(path_scenario, "storage_charge.csv"), storage_charge)
+    CSV.write(joinpath(path_scenario, "storage_discharge.csv"), storage_discharge)
+    CSV.write(joinpath(path_scenario, "power_balance.csv"), power_balance)
+    CSV.write(joinpath(path_scenario, "production_costs.csv"), all_pc)    
+
+
+end

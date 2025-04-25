@@ -708,6 +708,110 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
     return Storage_dict
 end
 
+function create_pumped_hydro_objects(sys::System, storage_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
+    
+    #initialize pumped hydro dictionary
+    PumpedHydro_dict = Dict{String, HydroPumpedStorage}()
+
+    for i in 1:count(!ismissing, storage_df[:, "Resource"]) # loop through all storage resources
+        # retrieve name of storage resource
+        resource_name = storage_df[i, :Resource]
+
+        # Skip if it's not a pumped hydro unit
+        if !haskey(PM_type_dict, resource_name) || PM_type_dict[resource_name] != "PS"
+            continue
+        end
+
+        # Print current resource being processed
+        @info "Processing pumped hydro resource: $resource_name"
+
+        # retrieve capacity of pumped hydro resource
+        power_capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+        energy_capacity_mwh = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndEnergyCap], digits=3)
+
+        # Skip if either power or energy capacity is 0
+        if power_capacity_mw == 0.0 || energy_capacity_mwh == 0.0
+            @info "Skipping pumped hydro resource $resource_name due to zero capacity (power: $power_capacity_mw MW, energy: $energy_capacity_mwh MWh)"
+            continue
+        end
+
+        # retrieve the zone number (GENX)
+        zone_number = storage_df[i, :Zone]
+        # retrieve the bus name (PSY) by finding the key in zones_dict that matches our zone number
+        bus_name = findfirst(x -> x == zone_number, zone_dict)
+        if bus_name === nothing
+            @error "No bus found for zone $zone_number in zones_dict"
+            continue
+        end
+        # retrieve the bus object (PSY)
+        bus_object = get_component(ACBus, sys, bus_name)
+
+        # define Variable O&M costs
+        charge_VOM = round(storage_df[i, :Var_OM_Cost_per_MWh], digits=2)
+        discharge_VOM = round(storage_df[i, :Var_OM_Cost_per_MWh], digits=2)
+
+        # Fixed O&M
+        FOM_MW = round(storage_df[i, :Fixed_OM_Cost_per_MWyr], digits=2)
+        FOM_MWh = round(storage_df[i, :Fixed_OM_Cost_per_MWhyr], digits=2)
+
+        # define operation cost
+        Op_Cost = StorageCost(
+            charge_variable_cost = CostCurve(LinearCurve(charge_VOM, 0.0)),
+            discharge_variable_cost = CostCurve(LinearCurve(discharge_VOM, 0.0)),
+            fixed = FOM_MW*power_capacity_mw + FOM_MWh*energy_capacity_mwh,
+            start_up = 0.0,
+            shut_down = 0.0,
+            energy_shortage_cost = 0.0,
+            energy_surplus_cost = 0.0,
+        )
+
+        # define storage efficiency
+        charge_efficiency = round(storage_df[i, :Eff_Up], digits=3)
+        discharge_efficiency = round(storage_df[i, :Eff_Down], digits=3)
+
+        # calculate duration in hours
+        duration_hours = round(energy_capacity_mwh/power_capacity_mw, digits=3)
+        # calculate initial storage (50% of reservoir)
+        initial_storage_hours = round(duration_hours * 0.5, digits=3)
+
+        # define pumped hydro storage device
+        pumped_hydro = HydroPumpedStorage(;
+            name = resource_name, # string
+            available = true, # Boolean
+            bus = bus_object, # PSY bus object 
+            active_power = 0.0, # initial active power output
+            reactive_power = 0.0, # initial reactive power output
+            rating = 1.0, # max output power rating; unitized by DEVICE base_power
+            base_power = power_capacity_mw, # setting base power equal to nameplate capacity
+            prime_mover_type = PrimeMovers.PS, # Pumped Storage (hard coded)
+            active_power_limits = (min = 0.0, max = 1.0), # generation mode limits
+            reactive_power_limits = nothing, # No reactive power limits
+            ramp_limits = nothing, # No ramp limits
+            time_limits = nothing, # No time limits
+            rating_pump = 1.0, # max input power rating; unitized by DEVICE base_power
+            active_power_limits_pump = (min = 0.0, max = 1.0), # pumping mode limits
+            reactive_power_limits_pump = nothing, # No reactive power limits in pump mode
+            ramp_limits_pump = nothing, # No ramp limits (not defined for pumped hydro)
+            time_limits_pump = nothing, # No time limits (not defined for pumped hydro)
+            storage_capacity = (up = duration_hours, down = duration_hours*2), # storage capacity limits in hours
+            inflow = 0.0, # no natural inflow
+            outflow = 0.0, # no natural outflow
+            initial_storage = (up = initial_storage_hours, down = initial_storage_hours*2), # initial storage level; units: hours
+            storage_target = (up = 0.0, down = 0.0), # no storage target
+            operation_cost = Op_Cost,
+            pump_efficiency = charge_efficiency, # pumping efficiency
+            conversion_factor = 1.0, # Conversion factor of storage_capacity to MWh
+            time_at_status = 10.0, # initial time at status
+            dynamic_injector = nothing, # no dynamic injector
+        )
+
+        # add pumped hydro device to PumpedHydro_dict  
+        PumpedHydro_dict[resource_name] = pumped_hydro
+    end
+
+    return PumpedHydro_dict
+end
+
 function system_capacity_query(unit_collection::Dict, paths::Dict)
     # Initialize an empty DataFrame
     df = DataFrame(Resource = String[], MW_capacity = Float64[])
