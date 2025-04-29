@@ -13,6 +13,7 @@ using StorageSystemsSimulations
 using HydroPowerSimulations
 using DataStructures
 using Logging
+using InfrastructureSystems
 
 ##########################
 # Include helper functions
@@ -46,6 +47,7 @@ get_units_base(sys)
 ##########################
 # GENX Network Topology
 network_df = CSV.read(joinpath(paths[:data_dir], "system", "Network.csv"), DataFrame)
+bus_region_ba_df = CSV.read(joinpath(paths[:data_dir], "BusRegionBAMapping.csv"), DataFrame)
 
 # Buses
 ##########################
@@ -210,10 +212,10 @@ create_transmission_interface_parameters_df(sys, paths);
 # define file_path 
 demand_data_path = joinpath(paths[:data_dir], "system", "Demand_data.csv")
 # call the function to generate the demand timeseries df
-demand_ts = process_demand_data(demand_data_path, zone_dict)
+demand_ts_df = process_demand_data(demand_data_path, zone_dict)
 
 # Let's create our power loads dictionary
-power_loads_dict = create_power_loads(demand_ts, sys);
+power_loads_dict = create_power_loads(demand_ts_df, sys);
 
 # Now let's add our PowerLoad objects to the system
 for (pl_name, pl_object) in power_loads_dict
@@ -243,13 +245,9 @@ create_powerload_parameters_df(sys, paths);
 end =#
 
 #= # let's write the power loads to a csv file
-CSV.write(joinpath(paths[:data_dir], "Power_loads.csv"), demand_ts) =#
+CSV.write(joinpath(paths[:data_dir], "Power_loads.csv"), demand_ts_df) =#
 
-##########################
-# Define Fuel Objects 
-##########################
-# define df of fuel mapping
-fuel_mapping_df = CSV.read(joinpath(paths[:data_dir], "FuelMapping.csv"), DataFrame)
+
 
 ##########################
 # Define Generators / Storage Devices 
@@ -263,6 +261,8 @@ capacity_df = CSV.read(joinpath(paths[:data_dir], "results", "capacity.csv"), Da
 PM_type_df = CSV.read(joinpath(paths[:data_dir], "MoverTypesMapping.csv"), DataFrame);
 # create prime mover type dictionary
 PM_type_dict = Dict((row.Key) => row.Value for row in eachrow(PM_type_df));
+# Read fuel mapping information and convert to dictionary
+fuel_mapping_df = CSV.read(joinpath(paths[:data_dir], "FuelMapping.csv"), DataFrame)
 
 # create storage type dictionary
 storage_type_df = CSV.read(joinpath(paths[:data_dir], "StorageMapping.csv"), DataFrame);
@@ -484,7 +484,6 @@ end =#
 file_path = joinpath(paths[:data_dir], "PHS_parameters.csv");
 create_pumped_hydro_parameters_df(PHS_objects, file_path);
 
-
 ###########################
 # Query Nameplate Capacity of System
 ###########################
@@ -509,15 +508,15 @@ system_capacity_query(unit_collections, paths);
 generator_variability_data_path = joinpath(paths[:data_dir], "system", "Generators_variability.csv");
 
 # call the function to generate the generator profile timeseries df
-gen_variability_df = process_generator_variability_data(generator_variability_data_path)
+gen_variability_ts_df = process_generator_variability_data(generator_variability_data_path)
 
-#= # let's write the gen_variability_df to a csv file
-CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variability_df) =#
+#= # let's write the gen_variability_ts_df to a csv file
+CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variability_ts_df) =#
 
 # Power Loads
 ##########################
 # first let's create our PSI timeseries objects and store them in a container structured as a nested dictionary
-PL_ts_container = create_demand_PSY_timeseries(demand_ts, power_loads_dict)
+PL_ts_container = create_demand_PSY_timeseries(demand_ts_df, power_loads_dict)
 
 #spot check the time series
 active_ts = PL_ts_container["PGE"]["1998"]
@@ -550,7 +549,7 @@ get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ig
 # Renewable Dispatch Generators
 ##########################
 # Create dictionary of time series for renewable dispatch generators
-renewable_ts_container = create_Renew_D_PSY_timeseries(gen_variability_df, Renew_D_generators)
+renewable_ts_container = create_Renew_D_PSY_timeseries(gen_variability_ts_df, Renew_D_generators)
 
 # spot check the time series
 active_ts = renewable_ts_container["Southern_NV_Eldorado_Solar_SCE"]["1998"]
@@ -598,7 +597,7 @@ end =#
 # Renewable Non-Dispatch Generators
 ##########################
 # Create dictionary of time series for renewable non-dispatch generators
-renew_ND_ts_container = create_Renew_ND_PSY_timeseries(gen_variability_df,Renew_ND_generators)
+renew_ND_ts_container = create_Renew_ND_PSY_timeseries(gen_variability_ts_df,Renew_ND_generators)
 
 # spot check the time series
 active_ts = renew_ND_ts_container["Customer_PV_PGE"]["1998"]
@@ -634,7 +633,7 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 # Thermal Standard Generators
 ##########################
 # Create dictionary of time series for thermal standard non-dispatch generators
-ThermalStandard_ts_container = create_ThermalStandard_PSY_timeseries(gen_variability_df,ThermalStandard_generators)
+ThermalStandard_ts_container = create_ThermalStandard_PSY_timeseries(gen_variability_ts_df,ThermalStandard_generators)
 
 # spot check the time series
 active_ts = ThermalStandard_ts_container["CAISO_CCGT1_PGE"]["1998"]
@@ -670,7 +669,7 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 # Hydro Generators
 ##########################
 # Create dictionary of time series for thermal standard non-dispatch generators
-Hydro_ts_container = create_Hydro_PSY_timeseries(gen_variability_df,HydroDispatch_generators)
+Hydro_ts_container = create_Hydro_PSY_timeseries(gen_variability_ts_df,HydroDispatch_generators)
 
 # spot check the time series
 active_ts = Hydro_ts_container["CAISO_Hydro_PGE"]["1998"]
@@ -707,38 +706,223 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 ##########################
 # GENX has this pinned at 1 for all timesteps across all weather years; therefore not assigning any time series to the PHS objects
 
+##########################
+# Define Reserves
+##########################
+# general
+##########################
+reserves_df = CSV.read(joinpath(paths[:data_dir], "system", "Operational_reserves.csv"), DataFrame);
+oprsv_zones_df = CSV.read(joinpath(paths[:data_dir], "oprsv_zones.csv"), DataFrame)
+oprsv_zones = oprsv_zones_df.Zone
+
+# Regulation
+##########################
+# intialize services  
+reg_reserve_serv_dict = create_CAISO_reg_reserve_services()
+reg_reserve_serv_dict["CAISO_reg_up"]
+reg_reserve_serv_dict["CAISO_reg_down"]
+
+# define contributing devices
+reg_reserve_units_dict = create_CAISO_reg_reserve_units(ThermalStandard_generators, Renew_D_generators, HydroDispatch_generators, Storage_objects, PHS_objects, thermal_df, vre_df, hydro_df, storage_df)
+reg_reserve_units_dict["CAISO_reg_up"]
+reg_reserve_units_dict["CAISO_reg_down"]
+
+# add reg services to system
+add_service!(sys, reg_reserve_serv_dict["CAISO_reg_up"], reg_reserve_units_dict["CAISO_reg_up"])
+add_service!(sys, reg_reserve_serv_dict["CAISO_reg_down"], reg_reserve_units_dict["CAISO_reg_down"])
+
+# define reserve service collection
+reserveUp_services = collect(get_components(VariableReserve{ReserveUp}, sys))
+reserveDown_services = collect(get_components(VariableReserve{ReserveDown}, sys))
+
+# check to make sure reserve services were added
+show_components(VariableReserve{ReserveUp}, sys)
+show_components(VariableReserve{ReserveDown}, sys)
+get_components(VariableReserve{ReserveUp}, sys) # retrieves an iterator of the reserve up services
+get_components(VariableReserve{ReserveDown}, sys) # retrieves an iterator of the reserve down services
+
+# spot check to make sure reserve units were added
+active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+get_services(active_component)
+
+# now let's create PSY timeseries for regulation service
+reg_ts_container_up, reg_ts_container_down, reg_reserve_df = create_reg_reserve_PSY_timeseries(demand_ts_df, gen_variability_ts_df, reserves_df, oprsv_zones, zone_dict, Renew_D_generators);
+
+# Write regulation reserve components to CSV for visual inspection
+CSV.write(joinpath(paths[:data_dir], "reg_reserve_components.csv"), reg_reserve_df);
+
+#spot check the time series
+active_ts = reg_ts_container_up["1998"]
+active_ts.name
+active_ts.data
+
+active_ts = reg_ts_container_down["1998"]
+active_ts.name
+active_ts.data
+
+# now that have our timeseries, let's assign them to our reg service objects defined in the system
+# ReserveUp
+##########################
+active_service = get_component(VariableReserve{ReserveUp}, sys, "CAISO_reg_up")
+for (year, ts) in reg_ts_container_up
+    # Only add up timeseries to up reserve service
+    add_time_series!(sys, active_service, ts)
+end
+
+#check to make sure time series was added to requirement
+show_time_series(active_service)
+get_time_series_array(SingleTimeSeries, active_service, "requirement_up_1998"; ignore_scaling_factors = true) # service was defined in natural units
+get_time_series_array(SingleTimeSeries, active_service, "requirement_up_1998"; ignore_scaling_factors = false) # service was defined in natura units
+
+
+# ReserveDown
+##########################
+active_service = get_component(VariableReserve{ReserveDown}, sys, "CAISO_reg_down")
+for (year, ts) in reg_ts_container_down
+    # Only add up timeseries to up reserve service
+    add_time_series!(sys, active_service, ts)
+end
+
+#check to make sure time series was added to requirement
+show_time_series(active_service)
+get_time_series_array(SingleTimeSeries, active_service, "requirement_down_1998"; ignore_scaling_factors = true) # service was defined in natural units
+get_time_series_array(SingleTimeSeries, active_service, "requirement_down_1998"; ignore_scaling_factors = false) # service was defined in natura units
+
+
+#= # remove time series from ReserveUp service objects   
+for service in reserveUp_services
+    # Get all time series keys for this service
+    ts_keys = get_time_series_keys(service)
+    # Loop through each time series key
+    for ts_key in ts_keys
+        ts_name = get_name(ts_key)
+        # remove the time series
+        remove_time_series!(sys, SingleTimeSeries, service, ts_name)
+    end
+end
+
+# remove time series from ReserveDown service objects   
+for service in reserveDown_services
+    # Get all time series keys for this service
+    ts_keys = get_time_series_keys(service)
+    # Loop through each time series key
+    for ts_key in ts_keys
+        ts_name = get_name(ts_key)
+        # remove the time series
+        remove_time_series!(sys, SingleTimeSeries, service, ts_name)
+    end
+end =#
+    
+
+##########################
+# Define Fuel Time Series Info
+##########################
+# Process fuel price data
+fuels_df = CSV.read(joinpath(paths[:data_dir], "system", "Fuels_data.csv"), DataFrame)
+fuel_ts_df = process_fuel_data(fuels_df)
+
+# Troubleshooting: write the fuels_df to a csv for visual inspection
+CSV.write(joinpath(paths[:data_dir], "fuels_data.csv"), fuel_ts_df)
+
+# Create fuel price timeseries by fuel type
+fuel_price_ts_dict = create_fuel_price_PSY_timeseries(fuel_ts_df)
+
+# spot check the fuel price timeseries
+active_ts = fuel_price_ts_dict["CA_Natural_Gas_CCS_90"]
+active_ts.name
+active_ts.data
+
+# now let's apply the fuel price forecast to each thermal generator based on resource type and region
+for thermal_standard in ThermalStandard_generators
+    
+    # Get the fuel type for this generator
+    fuel_type = string(get_fuel(thermal_standard))
+    
+    # For COAL and NATURAL_GAS, we need to consider regional differences
+    if fuel_type in ["COAL", "NATURAL_GAS"]
+        # Get the bus name and look up the region
+        bus_name = get_name(get_bus(thermal_standard))
+        region = bus_region_ba_df[bus_region_ba_df.bus .== bus_name, :].region[1]
+        
+        if isempty(region)
+            @warn "No region found for bus $bus_name for generator $(get_name(thermal_standard))"
+            continue
+        end
+        
+        # Look up the corresponding fuel price time series based on region and fuel type
+        matching_rows = fuel_mapping_df[
+            (fuel_mapping_df.region .== region) .& 
+            (fuel_mapping_df.sienna_fuel_type .== fuel_type), 
+            :]
+    else
+        # For all other fuel types, we don't need to consider region
+        matching_rows = fuel_mapping_df[
+            fuel_mapping_df.sienna_fuel_type .== fuel_type, 
+            :]
+    end
+    
+    if nrow(matching_rows) == 0
+        @warn "No fuel price mapping found for fuel type $fuel_type for generator $(get_name(thermal_standard))"
+        continue
+    end
+    
+    fuel_price_key = matching_rows[1, :fuel_price_fx]
+    
+    # Get the timeseries for this fuel type
+    if haskey(fuel_price_ts_dict, fuel_price_key)
+        ts = fuel_price_ts_dict[fuel_price_key]
+        # Add the timeseries to the generator
+        add_time_series!(sys, thermal_standard, ts)
+    else
+        @warn "No fuel price timeseries found for fuel price key $fuel_price_key (fuel type: $fuel_type) for generator $(get_name(thermal_standard))"
+    end
+end
+
+# let's check our work
+active_object = ThermalStandard_generators[1]
+show_time_series(active_object) # should now see a fuel_price time series
+get_name.(get_time_series_keys(active_object)) # retrieve the names of all time series 
+get_time_series_array(SingleTimeSeries, active_object, "fuel_price"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "fuel_price"; ignore_scaling_factors = false) # this should be the same as the first one (natural units)
+active_object.operation_cost # we still see the default fuel cost (because haven't applied the fix yet)
+
+# so now let's make the fuel price fx serve as the source of fuel costs for the PSI simulation(s)
+update_TS_fuel_price!(sys, ThermalStandard_generators)
+
+# you guessed it: let's check our work!
+get_time_series(SingleTimeSeries, active_object, "fuel_price")
+get_time_series_array(SingleTimeSeries, active_object, "fuel_price"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "fuel_price"; ignore_scaling_factors = false) # this should be equal to the previous cmd
+# get_time_series_array(DeterministicSingleTimeSeries, active_object, "fuel_price")
+active_object.operation_cost # should now see a pointer to the fuel_price timeseries as the defintion for ful_cost attribute
+
+#= # remove all fuel_price_fx time series from system
+for gen in get_components(x -> has_time_series(x), ThermalStandard, sys)
+    remove_time_series!(sys, SingleTimeSeries, gen, "fuel_price")
+end
+ =#
 
 #################################
 # create timeseries fxs 
 #################################
 # create DeterministicSingleTimeSeries objects (48-hr horizon & 24-hr lookahead; i.e. 24 hour "realized intervals") 
-transform_single_time_series!(sys, Hour(48), Hour(24)) 
+transform_single_time_series!(sys, Hour(48), Hour(24))
+
+# remove DeterministicSingleTimeSeries (i.e. forecasts) from ALL objects
+# remove_time_series!(sys, DeterministicSingleTimeSeries) # Troubleshooting
+
+
+# check your work
+active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+show_time_series(active_component)
+ts_test = get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
+horizon = get_horizon(ts_test)
+interval = get_interval(ts_test) # note this command requires the infrastructuresystems pkg
 
 ##########################
-# Define Fuel Info 
+# Define Outage Data (#TO-DO))
 ##########################
-# define df of fuel prices 
-fuels_df = CSV.read(joinpath(paths[:data_dir], "system", "Fuels_data.csv"), DataFrame)
-
-# call the function to generate the demand timeseries df
-# fuel_ts = process_fuel_data(fuels_df)
-
-
-##########################
-# Define Outage Data
-##########################
-
-##########################
-# Define Reserves
-##########################
-# general
-reserves_df = CSV.read(joinpath(paths[:data_dir], "system", "Operational_reserves.csv"), DataFrame);
-
-# Spinning Reserves
-spin_requirement = reserves_df[!, "Rsv_Req_Percent_Demand"];
-
-# Reserve Zones
-oprsv_zones = CSV.read(joinpath(paths[:data_dir], "oprsv_zones.csv"), DataFrame).Zone; #CAISO TAC Zones
+# SiennaPRASInterface will handle this
 
 ##########################
 # Define PowerSimulations.jl (PSI) template and model 
@@ -762,12 +946,16 @@ wy = weather_years
 decision_name = "deterministic_$wy"
 
 # Create an empty model reference
+##########################
 template_uc = ProblemTemplate()
 
 # Define non-weather related Device Models
 ##########################
 # storage
 define_storage_model(template_uc)
+
+# PHS
+# define_PHS_model(template_uc) To-Do: add PHS model
 
 # Define weather-dependent Device Models
 ##########################
@@ -790,6 +978,11 @@ define_renewable_non_dispatch_model(template_uc, wy)
 ###########################
 define_branch_model(template_uc)
 
+# define the service model
+###########################
+# define_RegUp_service_model(template_uc, wy)
+# define_RegDown_service_model(template_uc, wy)
+
 # Define network model
 ###########################
 # CopperPlate
@@ -809,7 +1002,7 @@ UC_decision = DecisionModel(
     name = decision_name,
     optimizer = optimizer_with_attributes(Gurobi.Optimizer, "MIPGap" => 1e-2),
     system_to_file = false, # write the json and hf files
-    initialize_model = true, # Q: what does this do?
+    initialize_model = true, 
     optimizer_solve_log_print = true, #solver output
     direct_mode_optimizer = true, # performance thing; default is true; set it false if you have specific need
     rebuild_model = false, # never have to use this, R&D thing
@@ -896,7 +1089,6 @@ gen_active_power = hcat(thermal_active_power, select(renewDispatch_active_power,
 
 # Output Realized TX flows
 AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
-# TO-DO: Activate interfaces for SFCs
 
 # Output Expressions
 power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
@@ -906,6 +1098,7 @@ pc_thermal = read_realized_expression(results, "ProductionCostExpression__Therma
 pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch")
 pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch")
 pc_all = hcat(pc_thermal,select(pc_renewable, Not(1)), select(pc_hydro, Not(1)))
+fuel_consumption_thermal = read_realized_expression(results, "FuelConsumptionExpression__ThermalStandard")
 
 ###########################
 # Export Results
@@ -922,7 +1115,8 @@ CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge);
 CSV.write(joinpath(results_file_path, "storage_discharge.csv"), storage_discharge);
 CSV.write(joinpath(results_file_path, "AreaInterchange_flow.csv"), AreaInterchange_flow);
 CSV.write(joinpath(results_file_path, "power_balance.csv"), power_balance);
-CSV.write(joinpath(results_file_path, "production_costs.csv"), all_pc);    
+CSV.write(joinpath(results_file_path, "production_costs.csv"), pc_all);   
+CSV.write(joinpath(results_file_path, "production_costs.csv"), fuel_consumption_thermal);    
 
     
 

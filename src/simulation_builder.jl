@@ -18,10 +18,25 @@ function define_storage_model(template_uc)
     PowerSimulations.set_device_model!(template_uc, storage_model)
 end
 
+function define_PHS_model(template_uc)
+    # Define custom DeviceModel for EnergyReservoirStorage
+    PHS_model = DeviceModel(
+        HydroPumpedStorage,
+        StorageDispatchWithReserves,
+    )
+    # Assign the storage model to the template_uc
+    PowerSimulations.set_device_model!(template_uc, PHS_model)
+end
+
+
 function define_thermal_model(template_uc, WY)
     # Define custom DeviceModel for ThermalStandard with time-varying max_active_power
-    thermal_model = DeviceModel(ThermalStandard, ThermalStandardUnitCommitment;
-        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+#=     thermal_model = DeviceModel(ThermalStandard, ThermalStandardUnitCommitment;
+        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY")) =#
+
+    thermal_model = DeviceModel(ThermalStandard, ThermalStandardUnitCommitment; time_series_names = Dict{Any, String}(
+                PowerSimulations.FuelCostParameter => "fuel_price",
+                PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY",))
 
     # assign the thermal model to the template_uc
     PowerSimulations.set_device_model!(template_uc, thermal_model)
@@ -105,10 +120,34 @@ end
 
 
 #################################
-# Define Service Model in PSI 
+# Define Service Models in PSI 
 #################################
-#To-DO: define the service model
-#     set_service_model!(template_uc, VariableReserve{ReserveUp}, RangeReserve)
+# regulation up
+function define_RegUp_service_model(template_uc, WY)
+    # Define the regulation up reserve service model with time series requirements
+    reg_reserve_up_model = ServiceModel(
+        VariableReserve{ReserveUp},
+        RangeReserve;
+        time_series_names = Dict(PowerSimulations.RequirementTimeSeriesParameter => "requirement_up_$WY")
+    )
+
+    # Assign the service model to the template_uc
+    PowerSimulations.set_service_model!(template_uc, reg_reserve_up_model)
+end
+
+# regulation down
+function define_RegDown_service_model(template_uc, WY)
+    # Define the regulation down reserve service model with time series requirements
+    reg_reserve_down_model = ServiceModel(
+        VariableReserve{ReserveDown},
+        RangeReserve;
+        time_series_names = Dict(PowerSimulations.RequirementTimeSeriesParameter => "requirement_down_$WY")
+    )
+
+    # Assign the service model to the template_uc
+    PowerSimulations.set_service_model!(template_uc, reg_reserve_down_model)
+end
+
 
 #################################
 # Define Simulation Model in PSI 

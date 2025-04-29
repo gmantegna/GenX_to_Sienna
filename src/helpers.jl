@@ -486,6 +486,42 @@ function query_write_export_results(sim::Simulation, path_scenario::String, uc_d
     CSV.write(joinpath(path_scenario, "storage_discharge.csv"), storage_discharge)
     CSV.write(joinpath(path_scenario, "power_balance.csv"), power_balance)
     CSV.write(joinpath(path_scenario, "production_costs.csv"), all_pc)    
+end
 
+function system_capacity_query(unit_collection::Dict, paths::Dict)
+    # Initialize an empty DataFrame
+    df = DataFrame(Resource = String[], MW_capacity = Float64[])
 
+    # for each generator collection, loop through each unit w/in that collection
+    for (category, gen_collection) in unit_collection
+        if category == "StorageUnits" #batteries
+            for unit in gen_collection
+                if get_available(unit)  # Check if the unit is active
+                    name = get_name(unit)  # Get the generator's name
+                    capacity = get_output_active_power_limits(unit).max  # Get the max active discharge power (MW)
+
+                    # Append to DataFrame
+                    push!(df, (name, capacity))
+                else
+                # do nothing
+                end
+            end
+        else # all other generator types
+            for unit in gen_collection
+                if get_available(unit)  # Check if the unit is active
+
+                    name = get_name(unit)  # Get the generator's name
+                    capacity = get_max_active_power(unit)  # Get the max active power (MW)
+
+                    # Append to DataFrame
+                    push!(df, (name, capacity))
+                else
+                    #do nothing
+                end
+            end
+        end # if loop
+    end
+
+    #write df to csv
+    CSV.write(joinpath(paths[:data_dir], "nameplate_capacity.csv"), df);
 end

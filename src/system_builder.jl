@@ -212,7 +212,7 @@ function create_power_loads(demand_df::DataFrame, sys::System)
         
         # Handle case where max_power is 0
         if max_power == 0.0
-            @info "Zero demand detected for bus $bus_name, setting base_power to 1.0 and per-unit attributes to 0.0"
+            @warn "Zero demand detected for bus $bus_name, setting base_power to 1.0 and per-unit attributes to 0.0"
             base_power = 1.0
             active_power = 0.0
             reactive_power = 0.0
@@ -339,10 +339,13 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
 
         # define fuel type
         fuel_GENX = thermal_df[i, :Fuel]
-        fuel_PSY = fuel_mapping_df[fuel_mapping_df.Key .== fuel_GENX, :Value][1]
-        
-        #typeof(ThermalFuels.NATURAL_GAS)
-        #fieldnames(typeof(ThermalFuels.NATURAL_GAS)) .value
+        matching_rows = fuel_mapping_df[fuel_mapping_df.fuel_price_fx .== fuel_GENX, :sienna_fuel_type]
+        if isempty(matching_rows)
+            @warn "No fuel mapping found for GENX fuel type $fuel_GENX"
+            fuel_PSY = "OTHER" # assign OTHER as default
+        else
+            fuel_PSY = matching_rows[1]
+        end
 
         # define thermal standard
         thermal = ThermalStandard(;
@@ -812,41 +815,152 @@ function create_pumped_hydro_objects(sys::System, storage_df::DataFrame, capacit
     return PumpedHydro_dict
 end
 
-function system_capacity_query(unit_collection::Dict, paths::Dict)
-    # Initialize an empty DataFrame
-    df = DataFrame(Resource = String[], MW_capacity = Float64[])
-
-    # for each generator collection, loop through each unit w/in that collection
-    for (category, gen_collection) in unit_collection
-        if category == "StorageUnits" #batteries
-            for unit in gen_collection
-                if get_available(unit)  # Check if the unit is active
-                    name = get_name(unit)  # Get the generator's name
-                    capacity = get_output_active_power_limits(unit).max  # Get the max active discharge power (MW)
-
-                    # Append to DataFrame
-                    push!(df, (name, capacity))
-                else
-                # do nothing
-                end
-            end
-        else # all other generator types
-            for unit in gen_collection
-                if get_available(unit)  # Check if the unit is active
-
-                    name = get_name(unit)  # Get the generator's name
-                    capacity = get_max_active_power(unit)  # Get the max active power (MW)
-
-                    # Append to DataFrame
-                    push!(df, (name, capacity))
-                else
-                    #do nothing
-                end
-            end
-        end # if loop
-    end
-
-    #write df to csv
-    CSV.write(joinpath(paths[:data_dir], "nameplate_capacity.csv"), df);
+function create_CAISO_reg_reserve_services()
+    # Initialize reserve dictionary
+    Reserve_dict = Dict{String, Reserve}()
+    
+    # Create the VariableReserve object for up reserves
+    reserve_up = VariableReserve{ReserveUp}(;
+        name = "CAISO_reg_up", # string
+        available = true, # Boolean representing if the reserve is active or not
+        time_frame = 10.0,  # saturation timeframe to provide service (min)
+        requirement = 1.0,  # scaled by timeseries (which we attach later)
+        sustained_time = 3600.0,  # time (secs) reserve contribution must be sustained
+        max_output_fraction = 1.0, #  the max fraction of each device's output that can be assigned
+        max_participation_factor = 1.0, # the max portion [0, 1.0] of the reserve that can be contributed per device
+        deployed_fraction = 0.0, # Fraction of service procurement that is assumed to be actually deployed
+    )
+    
+    # Create the VariableReserve object for down reserves
+    reserve_down = VariableReserve{ReserveDown}(;
+        name = "CAISO_reg_down", # string
+        available = true, # Boolean representing if the reserve is active or not
+        time_frame = 10.0,  # saturation timeframe to provide service (min)
+        requirement = 1.0,  # scaled by timeseries (which we attach later)
+        sustained_time = 3600.0,  # time (secs) reserve contribution must be sustained
+        max_output_fraction = 1.0, #  the max fraction of each device's output that can be assigned
+        max_participation_factor = 1.0, # the max portion [0, 1.0] of the reserve that can be contributed per device
+        deployed_fraction = 0.0, # Fraction of service procurement that is assumed to be actually deployed
+    )
+    
+    # Add to dictionary
+    Reserve_dict["CAISO_reg_up"] = reserve_up
+    Reserve_dict["CAISO_reg_down"] = reserve_down
+    
+    return Reserve_dict
 end
 
+function create_CAISO_reg_reserve_units(
+    thermal_generators::Vector{ThermalStandard},
+    renew_d_generators::Vector{RenewableDispatch},
+    hydro_generators::Vector{HydroDispatch},
+    storage_units::Vector{EnergyReservoirStorage}, 
+    pumped_hydro_units::Vector{HydroPumpedStorage}, 
+    thermal_df::DataFrame,
+    vre_df::DataFrame,
+    hydro_df::DataFrame,
+    storage_df::DataFrame
+)
+    # Initialize dictionary to store eligible resources
+    eligible_reg_units_dict = Dict{String, Vector{Device}}()
+    
+    # Define utility areas we want to include
+    utility_areas = ["PGE", "SCE", "SDGE"]
+    
+    # Initialize vectors for both up and down reserves
+    eligible_reg_units_dict["CAISO_reg_up"] = Vector{Device}()
+    eligible_reg_units_dict["CAISO_reg_down"] = Vector{Device}()
+    
+    # Check thermal generators
+    for gen in thermal_generators
+        bus_name = get_name(get_bus(gen))
+        if bus_name in utility_areas
+            # Get the resource name and check Reg_Max in the original dataframe
+            resource_name = get_name(gen)
+            thermal_row = thermal_df[thermal_df.Resource .== resource_name, :]
+            if !isempty(thermal_row) && thermal_row[1, :Reg_Max] > 0
+                # Add to both up and down reserve lists
+                push!(eligible_reg_units_dict["CAISO_reg_up"], gen)
+                push!(eligible_reg_units_dict["CAISO_reg_down"], gen)
+            end
+        end
+    end
+    
+    # Check renewable dispatch generators
+    for gen in renew_d_generators
+        bus_name = get_name(get_bus(gen))
+        if bus_name in utility_areas
+            # Get the resource name and check Reg_Max in the original dataframe
+            resource_name = get_name(gen)
+            vre_row = vre_df[vre_df.Resource .== resource_name, :]
+            if !isempty(vre_row) && vre_row[1, :Reg_Max] > 0
+                # Add to both up and down reserve lists
+                push!(eligible_reg_units_dict["CAISO_reg_up"], gen)
+                push!(eligible_reg_units_dict["CAISO_reg_down"], gen)
+            end
+        end
+    end
+    
+    # Check hydro generators
+    for gen in hydro_generators
+        bus_name = get_name(get_bus(gen))
+        if bus_name in utility_areas
+            # Get the resource name and check Reg_Max in the original dataframe
+            resource_name = get_name(gen)
+            hydro_row = hydro_df[hydro_df.Resource .== resource_name, :]
+            if !isempty(hydro_row) && hydro_row[1, :Reg_Max] > 0
+                # Add to both up and down reserve lists
+                push!(eligible_reg_units_dict["CAISO_reg_up"], gen)
+                push!(eligible_reg_units_dict["CAISO_reg_down"], gen)
+            end
+        end
+    end
+    
+    # Check storage resources
+    for storage in storage_units
+        bus_name = get_name(get_bus(storage))
+        if bus_name in utility_areas
+            # Get the resource name and check Reg_Max in the original dataframe
+            resource_name = get_name(storage)
+            storage_row = storage_df[storage_df.Resource .== resource_name, :]
+            if !isempty(storage_row) && storage_row[1, :Reg_Max] > 0
+                # Add to both up and down reserve lists
+                push!(eligible_reg_units_dict["CAISO_reg_up"], storage)
+                push!(eligible_reg_units_dict["CAISO_reg_down"], storage)
+            end
+        end
+    end
+
+    # Check pumped hydro resources  
+    for PHS in pumped_hydro_units
+        bus_name = get_name(get_bus(PHS))
+        if bus_name in utility_areas
+            # Get the resource name and check Reg_Max in the original dataframe
+            resource_name = get_name(PHS)
+            PHS_row = storage_df[storage_df.Resource .== resource_name, :]
+            if !isempty(PHS_row) && PHS_row[1, :Reg_Max] > 0
+                # Add to both up and down reserve lists
+                push!(eligible_reg_units_dict["CAISO_reg_up"], PHS)
+                push!(eligible_reg_units_dict["CAISO_reg_down"], PHS)
+            end
+        end
+    end
+    
+    return eligible_reg_units_dict
+end
+
+function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalStandard})
+
+    # reassign fuel_price timeseries to ThermalStandard objects
+    for g in thermal_standards
+        if "fuel_price" ∈ get_name.(get_time_series_keys(g))
+            # fuel_ts = get_time_series(SingleTimeSeries, g, "fuel_price")
+            fuel_array = get_time_series_array(SingleTimeSeries, g, "fuel_price"; ignore_scaling_factors = true)
+            tstamp = timestamp(fuel_array)
+            vals = values(fuel_array)
+            new_ts = SingleTimeSeries("fuel_price", TimeArray(tstamp, vals))
+            remove_time_series!(sys, SingleTimeSeries, g, "fuel_price")
+            set_fuel_cost!(sys, g, new_ts)
+        end
+    end
+end
