@@ -28,6 +28,10 @@ include(joinpath(@__DIR__, "simulation_builder.jl"))
 ##########################
 # Define Path Directories
 paths = initialize_paths_and_inputs()
+# define constants 
+const PSY = PowerSystems
+const PSI = PowerSimulations
+#const SPI = SiennaPRASInterface
 
 # Define logger
 logger = configure_logging(console_level=Logging.Info);
@@ -741,9 +745,20 @@ show_components(VariableReserve{ReserveDown}, sys)
 get_components(VariableReserve{ReserveUp}, sys) # retrieves an iterator of the reserve up services
 get_components(VariableReserve{ReserveDown}, sys) # retrieves an iterator of the reserve down services
 
-# spot check to make sure reserve units were added
+# spot check to make sure reserve memberships were assigned
+# thermal standard
 active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
 get_services(active_component)
+
+# hydro
+active_component = get_component(HydroDispatch, sys, "CAISO_Hydro_PGE")
+get_services(active_component)
+
+active_service = reserveUp_services[1]
+for as_units in get_contributing_devices(sys, active_service)
+    println(get_name(as_units))
+end
+
 
 # now let's create PSY timeseries for regulation service
 reg_ts_container_up, reg_ts_container_down, reg_reserve_df = create_reg_reserve_PSY_timeseries(demand_ts_df, gen_variability_ts_df, reserves_df, oprsv_zones, zone_dict, Renew_D_generators);
@@ -771,9 +786,15 @@ end
 
 #check to make sure time series was added to requirement
 show_time_series(active_service)
+get_time_series_keys(active_service)
+get_time_series_keys(active_service).ref
+get_time_series_keys(active_service).size
 get_time_series_array(SingleTimeSeries, active_service, "requirement_up_1998"; ignore_scaling_factors = true) # service was defined in natural units
 get_time_series_array(SingleTimeSeries, active_service, "requirement_up_1998"; ignore_scaling_factors = false) # service was defined in natura units
-
+get_requirement(active_service)
+ts_active = get_time_series_array(SingleTimeSeries, active_service, "requirement_up_1999"; ignore_scaling_factors = true)
+#set_requirement!(active_service, 5) # this jumps update the requirement attribute (has to be a constant)
+get_requirement(active_service)
 
 # ReserveDown
 ##########################
@@ -933,7 +954,7 @@ run_type = "Deterministic"
 # determine if run_type is deterministic or monte-create
 # Define the range of weather years
 if run_type == "Deterministic"
-    weather_years = 1998;
+    weather_years = 1999;
 elseif run_type == "Monte_Carlo" 
     weather_years = 1999:1999; # testing  only a few yrs to ensure proper configuration across weather years
 else
@@ -941,6 +962,17 @@ else
 end 
 
 wy = weather_years
+
+
+# assign our generic "requirement" timeseries for our reserveup service
+create_generic_requirement_reserveUP_timeseries(sys, wy)
+
+# check to make sure it worked
+show_time_series(reserveUp_services[1])
+# original requirement
+get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement_up_$WY"; ignore_scaling_factors = true)
+# new requirement (these should match)
+get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement"; ignore_scaling_factors = true)
 
 #assign name
 decision_name = "deterministic_$wy"
@@ -980,8 +1012,12 @@ define_branch_model(template_uc)
 
 # define the service model
 ###########################
-# define_RegUp_service_model(template_uc, wy)
-# define_RegDown_service_model(template_uc, wy)
+define_RegUp_service_model(template_uc) # remember: we already updated our timeseries for the active WY
+# define_RegDown_service_model(template_uc)
+
+
+# Q: What is a GroupReserve?
+# Q: what is an Aggregated Model?
 
 # Define network model
 ###########################

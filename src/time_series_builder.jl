@@ -461,4 +461,54 @@ function create_fuel_price_PSY_timeseries(fuel_ts::DataFrame)
     return ts_container
 end
 
+function create_generic_requirement_reserveUP_timeseries(sys::System, WY::Int64)
+    # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
+    remove_time_series!(sys, DeterministicSingleTimeSeries)
+    
+    # Get the reserve up service
+    reserve_up = get_component(VariableReserve{ReserveUp}, sys, "CAISO_reg_up")
+    
+    # Check if "requirement" timeseries already exists and remove it if it does
+    if "requirement" ∈ get_name.(get_time_series_keys(reserve_up))
+        remove_time_series!(sys, SingleTimeSeries, reserve_up, "requirement")
+    else
+        # do nothing
+    end
+    
+    # Get the timeseries array for the specific weather year
+    ts_array = get_time_series_array(SingleTimeSeries, reserve_up, "requirement_up_$WY"; ignore_scaling_factors = true)
+    
+    # Create a new timeseries with the same data but named "requirement"
+    tstamp = timestamp(ts_array)
+    vals = values(ts_array)
+    new_ts = SingleTimeSeries(
+        name = "requirement",
+        data = TimeArray(tstamp, vals),
+        scaling_factor_multiplier = get_requirement
+    )
+    
+    # Add the new timeseries to the reserve up service
+    add_time_series!(sys, reserve_up, new_ts)
+
+    # redefine our forecasts
+    transform_single_time_series!(sys, Hour(48), Hour(24))
+    
+end
+
+function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalStandard})
+
+    # reassign fuel_price timeseries to ThermalStandard objects
+    for g in thermal_standards
+        if "fuel_price" ∈ get_name.(get_time_series_keys(g))
+            # fuel_ts = get_time_series(SingleTimeSeries, g, "fuel_price")
+            fuel_array = get_time_series_array(SingleTimeSeries, g, "fuel_price"; ignore_scaling_factors = true)
+            tstamp = timestamp(fuel_array)
+            vals = values(fuel_array)
+            new_ts = SingleTimeSeries("fuel_price", TimeArray(tstamp, vals))
+            remove_time_series!(sys, SingleTimeSeries, g, "fuel_price")
+            set_fuel_cost!(sys, g, new_ts)
+        end
+    end
+end
+
 

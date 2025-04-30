@@ -123,12 +123,12 @@ end
 # Define Service Models in PSI 
 #################################
 # regulation up
-function define_RegUp_service_model(template_uc, WY)
+function define_RegUp_service_model(template_uc)
     # Define the regulation up reserve service model with time series requirements
     reg_reserve_up_model = ServiceModel(
-        VariableReserve{ReserveUp},
+        PSY.VariableReserve{PSY.ReserveUp},
         RangeReserve;
-        time_series_names = Dict(PowerSimulations.RequirementTimeSeriesParameter => "requirement_up_$WY")
+        time_series_names = Dict(PowerSimulations.RequirementTimeSeriesParameter => "requirement")
     )
 
     # Assign the service model to the template_uc
@@ -136,12 +136,12 @@ function define_RegUp_service_model(template_uc, WY)
 end
 
 # regulation down
-function define_RegDown_service_model(template_uc, WY)
+function define_RegDown_service_model(template_uc)
     # Define the regulation down reserve service model with time series requirements
     reg_reserve_down_model = ServiceModel(
         VariableReserve{ReserveDown},
         RangeReserve;
-        time_series_names = Dict(PowerSimulations.RequirementTimeSeriesParameter => "requirement_down_$WY")
+        time_series_names = Dict(PowerSimulations.RequirementTimeSeriesParameter => "requirement")
     )
 
     # Assign the service model to the template_uc

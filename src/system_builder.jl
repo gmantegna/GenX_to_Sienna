@@ -836,7 +836,7 @@ function create_CAISO_reg_reserve_services()
         name = "CAISO_reg_down", # string
         available = true, # Boolean representing if the reserve is active or not
         time_frame = 10.0,  # saturation timeframe to provide service (min)
-        requirement = 1.0,  # scaled by timeseries (which we attach later)
+        requirement = 1.0,  # scaled by the requirement timeseries (which we attach to object later)
         sustained_time = 3600.0,  # time (secs) reserve contribution must be sustained
         max_output_fraction = 1.0, #  the max fraction of each device's output that can be assigned
         max_participation_factor = 1.0, # the max portion [0, 1.0] of the reserve that can be contributed per device
@@ -886,7 +886,7 @@ function create_CAISO_reg_reserve_units(
         end
     end
     
-    # Check renewable dispatch generators
+#=     # Check renewable dispatch generators
     for gen in renew_d_generators
         bus_name = get_name(get_bus(gen))
         if bus_name in utility_areas
@@ -899,9 +899,9 @@ function create_CAISO_reg_reserve_units(
                 push!(eligible_reg_units_dict["CAISO_reg_down"], gen)
             end
         end
-    end
+    end =#
     
-    # Check hydro generators
+#=     # Check hydro generators
     for gen in hydro_generators
         bus_name = get_name(get_bus(gen))
         if bus_name in utility_areas
@@ -914,7 +914,7 @@ function create_CAISO_reg_reserve_units(
                 push!(eligible_reg_units_dict["CAISO_reg_down"], gen)
             end
         end
-    end
+    end =#
     
     # Check storage resources
     for storage in storage_units
@@ -949,18 +949,29 @@ function create_CAISO_reg_reserve_units(
     return eligible_reg_units_dict
 end
 
-function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalStandard})
-
-    # reassign fuel_price timeseries to ThermalStandard objects
-    for g in thermal_standards
-        if "fuel_price" ∈ get_name.(get_time_series_keys(g))
-            # fuel_ts = get_time_series(SingleTimeSeries, g, "fuel_price")
-            fuel_array = get_time_series_array(SingleTimeSeries, g, "fuel_price"; ignore_scaling_factors = true)
-            tstamp = timestamp(fuel_array)
-            vals = values(fuel_array)
-            new_ts = SingleTimeSeries("fuel_price", TimeArray(tstamp, vals))
-            remove_time_series!(sys, SingleTimeSeries, g, "fuel_price")
-            set_fuel_cost!(sys, g, new_ts)
-        end
+function create_generic_requirement_timeseries(sys::System, WY::String)
+    # Get the reserve up service
+    reserve_up = get_component(VariableReserve{ReserveUp}, sys, "CAISO_reg_up")
+    
+    # Check if "requirement" timeseries already exists and remove it if it does
+    if "requirement" ∈ get_name.(get_time_series_keys(reserve_up))
+        remove_time_series!(sys, SingleTimeSeries, reserve_up, "requirement")
     end
+    
+    # Get the timeseries array for the specific weather year
+    ts_array = get_time_series_array(SingleTimeSeries, reserve_up, "requirement_up_$WY"; ignore_scaling_factors = true)
+    
+    # Create a new timeseries with the same data but named "requirement"
+    tstamp = timestamp(ts_array)
+    vals = values(ts_array)
+    new_ts = SingleTimeSeries(
+        name = "requirement",
+        data = TimeArray(tstamp, vals),
+        scaling_factor_multiplier = get_requirement
+    )
+    
+    # Add the new timeseries to the reserve up service
+    add_time_series!(sys, reserve_up, new_ts)
+    
+    return new_ts
 end
