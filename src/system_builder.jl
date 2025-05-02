@@ -11,7 +11,7 @@ function create_buses(zone_listing_dict::OrderedDict{String,Int64})
             voltage_limits = (min = 0.95, max = 1.05),
             base_voltage = 230.0,
             area = nothing, # we will define this next
-            load_zone = nothing, # Q: What is a load zone
+            load_zone = nothing, #load zones are generally not used in PSY; areas are the norm
         )
         buses_dict[zone_name] = bus
     end
@@ -711,12 +711,12 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
     return Storage_dict
 end
 
-function create_pumped_hydro_objects(sys::System, storage_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
+function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
     
     #initialize pumped hydro dictionary
     PumpedHydro_dict = Dict{String, HydroPumpedStorage}()
 
-    for i in 1:count(!ismissing, storage_df[:, "Resource"]) # loop through all storage resources
+    for i in 1:count(!ismissing, storage_df[:, "Resource"]) #note: PHS parameters are in Storage.csv
         # retrieve name of storage resource
         resource_name = storage_df[i, :Resource]
 
@@ -770,7 +770,7 @@ function create_pumped_hydro_objects(sys::System, storage_df::DataFrame, capacit
 
         # define storage efficiency
         charge_efficiency = round(storage_df[i, :Eff_Up], digits=3)
-        discharge_efficiency = round(storage_df[i, :Eff_Down], digits=3)
+        # discharge_efficiency = round(storage_df[i, :Eff_Down], digits=3) #not used in PSY's PHS formulation 
 
         # calculate duration in hours
         duration_hours = round(energy_capacity_mwh/power_capacity_mw, digits=3)
@@ -796,15 +796,16 @@ function create_pumped_hydro_objects(sys::System, storage_df::DataFrame, capacit
             reactive_power_limits_pump = nothing, # No reactive power limits in pump mode
             ramp_limits_pump = nothing, # No ramp limits (not defined for pumped hydro)
             time_limits_pump = nothing, # No time limits (not defined for pumped hydro)
-            storage_capacity = (up = duration_hours, down = duration_hours*2), # storage capacity limits in hours
-            inflow = 0.0, # no natural inflow
-            outflow = 0.0, # no natural outflow
+            storage_capacity = (up = duration_hours, down = duration_hours*2), # setting lower reservoir equal to 2x the upper reservoir
+            inflow = 0.0, # no natural inflow (closed system)
+            outflow = 0.0, # no natural outflow (closed system)
             initial_storage = (up = initial_storage_hours, down = initial_storage_hours*2), # initial storage level; units: hours
-            storage_target = (up = 0.0, down = 0.0), # no storage target
+            #storage_target = (up = 0.0, down = 0.0), # no storage target
             operation_cost = Op_Cost,
             pump_efficiency = charge_efficiency, # pumping efficiency
-            conversion_factor = 1.0, # Conversion factor of storage_capacity to MWh
+            conversion_factor = 1.0, # Conversion factor from flow to energy p.u.-hr
             time_at_status = 10.0, # initial time at status
+            services = Device[], # no services
             dynamic_injector = nothing, # no dynamic injector
         )
 
@@ -861,6 +862,9 @@ function create_CAISO_reg_reserve_units(
     hydro_df::DataFrame,
     storage_df::DataFrame
 )
+
+    # right now only assigning reserves to theral and batteries (no pumped hydro)
+
     # Initialize dictionary to store eligible resources
     eligible_reg_units_dict = Dict{String, Vector{Device}}()
     
@@ -931,7 +935,7 @@ function create_CAISO_reg_reserve_units(
         end
     end
 
-    # Check pumped hydro resources  
+#=     # Check pumped hydro resources  
     for PHS in pumped_hydro_units
         bus_name = get_name(get_bus(PHS))
         if bus_name in utility_areas
@@ -944,34 +948,8 @@ function create_CAISO_reg_reserve_units(
                 push!(eligible_reg_units_dict["CAISO_reg_down"], PHS)
             end
         end
-    end
+    end =#
     
     return eligible_reg_units_dict
 end
 
-function create_generic_requirement_timeseries(sys::System, WY::String)
-    # Get the reserve up service
-    reserve_up = get_component(VariableReserve{ReserveUp}, sys, "CAISO_reg_up")
-    
-    # Check if "requirement" timeseries already exists and remove it if it does
-    if "requirement" ∈ get_name.(get_time_series_keys(reserve_up))
-        remove_time_series!(sys, SingleTimeSeries, reserve_up, "requirement")
-    end
-    
-    # Get the timeseries array for the specific weather year
-    ts_array = get_time_series_array(SingleTimeSeries, reserve_up, "requirement_up_$WY"; ignore_scaling_factors = true)
-    
-    # Create a new timeseries with the same data but named "requirement"
-    tstamp = timestamp(ts_array)
-    vals = values(ts_array)
-    new_ts = SingleTimeSeries(
-        name = "requirement",
-        data = TimeArray(tstamp, vals),
-        scaling_factor_multiplier = get_requirement
-    )
-    
-    # Add the new timeseries to the reserve up service
-    add_time_series!(sys, reserve_up, new_ts)
-    
-    return new_ts
-end

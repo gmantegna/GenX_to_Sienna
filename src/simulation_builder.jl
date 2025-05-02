@@ -4,7 +4,7 @@
 function define_storage_model(template_uc)
     # Define custom DeviceModel for EnergyReservoirStorage
     storage_model = DeviceModel(
-        EnergyReservoirStorage,
+        EnergyReservoirStorage, # this is what you need if you want to use storage with reserves
         StorageDispatchWithReserves;
         attributes = Dict(
             "reservation" => true, # True prevents discharging and charging in the same period
@@ -19,10 +19,13 @@ function define_storage_model(template_uc)
 end
 
 function define_PHS_model(template_uc)
-    # Define custom DeviceModel for EnergyReservoirStorage
+    # Define custom DeviceModel for EnergyReservoirStorage Q: How do I do this? 
     PHS_model = DeviceModel(
         HydroPumpedStorage,
-        StorageDispatchWithReserves,
+        HydroDispatchPumpedStorage;
+        attributes = Dict(
+            "reservation" => true, # True prevents discharging and charging in the same period 
+        ),
     )
     # Assign the storage model to the template_uc
     PowerSimulations.set_device_model!(template_uc, PHS_model)
@@ -84,7 +87,6 @@ function define_branch_model(template_uc)
     # define the branch model to be assigned to our AreaInterchanges
     # static branch -> adds unbounded flow variables and uses flow constraints
 
-    # Q: how would i add slack variables to this?
     AI_branch = DeviceModel(AreaInterchange, StaticBranch, use_slacks=false)
 
     PowerSimulations.set_device_model!(template_uc, AI_branch)
@@ -160,7 +162,7 @@ function build_and_execute_simulation(template_uc::ProblemTemplate, sys::System,
         name = decision_name,
         optimizer = optimizer_with_attributes(Gurobi.Optimizer, "MIPGap" => 1e-2),
         system_to_file = false, # write the json and hf files
-        initialize_model = true, # Q: what does this do?
+        initialize_model = true, 
         optimizer_solve_log_print = true, #solver output
         direct_mode_optimizer = true, # performance thing; default is true; set it false if you have specific need
         rebuild_model = false, # never have to use this, R&D thing

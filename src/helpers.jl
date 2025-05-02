@@ -393,7 +393,7 @@ function create_transmission_interface_parameters_df(sys::System, paths::Dict)
     CSV.write(joinpath(paths[:data_dir], "transmission_interface_parameters.csv"), df)
 end
 
-function create_pumped_hydro_parameters_df(pumped_hydro_objects::Vector{HydroPumpedStorage}, output_path::String)
+function create_PHS_parameters_df(pumped_hydro_objects::Vector{HydroPumpedStorage}, output_path::String)
     # Create DataFrame with column names matching the parameters we want to check
     df_pumped_hydro = DataFrame(
         name = String[],

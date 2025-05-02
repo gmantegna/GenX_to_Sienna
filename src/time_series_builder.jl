@@ -461,7 +461,7 @@ function create_fuel_price_PSY_timeseries(fuel_ts::DataFrame)
     return ts_container
 end
 
-function create_generic_requirement_reserveUP_timeseries(sys::System, WY::Int64)
+function create_generic_requirement_reserveUp_timeseries(sys::System, WY::Int64)
     # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
     remove_time_series!(sys, DeterministicSingleTimeSeries)
     
@@ -488,12 +488,39 @@ function create_generic_requirement_reserveUP_timeseries(sys::System, WY::Int64)
     )
     
     # Add the new timeseries to the reserve up service
-    add_time_series!(sys, reserve_up, new_ts)
-
-    # redefine our forecasts
-    transform_single_time_series!(sys, Hour(48), Hour(24))
-    
+    add_time_series!(sys, reserve_up, new_ts)    
 end
+
+function create_generic_requirement_reserveDown_timeseries(sys::System, WY::Int64)
+    # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
+    remove_time_series!(sys, DeterministicSingleTimeSeries)
+    
+    # Get the reserve down service
+    reserve_down = get_component(VariableReserve{ReserveDown}, sys, "CAISO_reg_down")
+    
+    # Check if "requirement" timeseries already exists and remove it if it does
+    if "requirement" ∈ get_name.(get_time_series_keys(reserve_down))
+        remove_time_series!(sys, SingleTimeSeries, reserve_down, "requirement")
+    else
+        # do nothing
+    end
+    
+    # Get the timeseries array for the specific weather year
+    ts_array = get_time_series_array(SingleTimeSeries, reserve_down, "requirement_down_$WY"; ignore_scaling_factors = true)
+    
+    # Create a new timeseries with the same data but named "requirement"
+    tstamp = timestamp(ts_array)
+    vals = values(ts_array)
+    new_ts = SingleTimeSeries(
+        name = "requirement",
+        data = TimeArray(tstamp, vals),
+        scaling_factor_multiplier = get_requirement
+    )
+    
+    # Add the new timeseries to the reserve down service
+    add_time_series!(sys, reserve_down, new_ts)    
+end
+
 
 function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalStandard})
 

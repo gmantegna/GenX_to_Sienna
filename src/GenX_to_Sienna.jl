@@ -236,7 +236,7 @@ get_active_power(active_component)
 get_bus(active_component)
 
 # define collection of power loads
-power_loads = collect(get_components(PowerLoad, sys))
+power_loads = collect(get_components(PowerLoad, sys));
 
 # Create and write power load parameters to CSV
 file_path = joinpath(paths[:data_dir], "powerload_parameters.csv");
@@ -250,8 +250,6 @@ end =#
 
 #= # let's write the power loads to a csv file
 CSV.write(joinpath(paths[:data_dir], "Power_loads.csv"), demand_ts_df) =#
-
-
 
 ##########################
 # Define Generators / Storage Devices 
@@ -455,7 +453,7 @@ create_storage_parameters_df(Storage_objects, file_path);
 ##########################
 
 # define storage generator objects
-PumpedHydro_dict = create_pumped_hydro_objects(sys, storage_df, capacity_df, PM_type_dict, zone_dict)   
+PumpedHydro_dict = create_PHS_objects(sys, storage_df, capacity_df, PM_type_dict, zone_dict)   
 
 # add storage generators to system
 for (PHS_name, PHS_object) in PumpedHydro_dict
@@ -486,7 +484,7 @@ end =#
 
 # Troubleshooting: Create DataFrame with storage parameters and write to CSV
 file_path = joinpath(paths[:data_dir], "PHS_parameters.csv");
-create_pumped_hydro_parameters_df(PHS_objects, file_path);
+create_PHS_parameters_df(PHS_objects, file_path);
 
 ###########################
 # Query Nameplate Capacity of System
@@ -759,6 +757,10 @@ for as_units in get_contributing_devices(sys, active_service)
     println(get_name(as_units))
 end
 
+active_service = reserveDown_services[1]
+for as_units in get_contributing_devices(sys, active_service)
+    println(get_name(as_units))
+end
 
 # now let's create PSY timeseries for regulation service
 reg_ts_container_up, reg_ts_container_down, reg_reserve_df = create_reg_reserve_PSY_timeseries(demand_ts_df, gen_variability_ts_df, reserves_df, oprsv_zones, zone_dict, Renew_D_generators);
@@ -775,7 +777,7 @@ active_ts = reg_ts_container_down["1998"]
 active_ts.name
 active_ts.data
 
-# now that have our timeseries, let's assign them to our reg service objects defined in the system
+# now that have our PSY timeseries, let's assign them to our reg service objects defined in the system
 # ReserveUp
 ##########################
 active_service = get_component(VariableReserve{ReserveUp}, sys, "CAISO_reg_up")
@@ -849,7 +851,7 @@ CSV.write(joinpath(paths[:data_dir], "fuels_data.csv"), fuel_ts_df)
 fuel_price_ts_dict = create_fuel_price_PSY_timeseries(fuel_ts_df)
 
 # spot check the fuel price timeseries
-active_ts = fuel_price_ts_dict["CA_Natural_Gas_CCS_90"]
+active_ts = fuel_price_ts_dict["CA_Natural_Gas"]
 active_ts.name
 active_ts.data
 
@@ -900,9 +902,9 @@ for thermal_standard in ThermalStandard_generators
 end
 
 # let's check our work
-active_object = ThermalStandard_generators[1]
+active_object = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
 show_time_series(active_object) # should now see a fuel_price time series
-get_name.(get_time_series_keys(active_object)) # retrieve the names of all time series 
+get_name.(get_time_series_keys(active_object)) # retrieve the names of all defined time series 
 get_time_series_array(SingleTimeSeries, active_object, "fuel_price"; ignore_scaling_factors = true)
 get_time_series_array(SingleTimeSeries, active_object, "fuel_price"; ignore_scaling_factors = false) # this should be the same as the first one (natural units)
 active_object.operation_cost # we still see the default fuel cost (because haven't applied the fix yet)
@@ -927,7 +929,7 @@ end
 # create timeseries fxs 
 #################################
 # create DeterministicSingleTimeSeries objects (48-hr horizon & 24-hr lookahead; i.e. 24 hour "realized intervals") 
-transform_single_time_series!(sys, Hour(48), Hour(24))
+#transform_single_time_series!(sys, Hour(48), Hour(24)) #Q: do i need to define this now since i am redefining after i add reserves?
 
 # remove DeterministicSingleTimeSeries (i.e. forecasts) from ALL objects
 # remove_time_series!(sys, DeterministicSingleTimeSeries) # Troubleshooting
@@ -954,25 +956,41 @@ run_type = "Deterministic"
 # determine if run_type is deterministic or monte-create
 # Define the range of weather years
 if run_type == "Deterministic"
-    weather_years = 1999;
+    weather_years = 1998;
 elseif run_type == "Monte_Carlo" 
     weather_years = 1999:1999; # testing  only a few yrs to ensure proper configuration across weather years
 else
     @warn "Incorrect setting for run_type; $run_type is not a valid option"
 end 
 
-wy = weather_years
+wy = weather_years #To-Do: fix this by putting it in a loop for all weather years
 
 
 # assign our generic "requirement" timeseries for our reserveup service
-create_generic_requirement_reserveUP_timeseries(sys, wy)
+create_generic_requirement_reserveUp_timeseries(sys, wy)
+
+# assign our generic "requirement" timeseries for our reservedown service
+create_generic_requirement_reserveDown_timeseries(sys, wy)
+
+# redefine our forecasts
+transform_single_time_series!(sys, Hour(48), Hour(24))
 
 # check to make sure it worked
+#reserve up
+##########################
 show_time_series(reserveUp_services[1])
 # original requirement
-get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement_up_$WY"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement_up_$wy"; ignore_scaling_factors = true)
 # new requirement (these should match)
 get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement"; ignore_scaling_factors = true)
+
+#reserve down
+##########################
+show_time_series(reserveDown_services[1])
+# original requirement
+get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement_down_$wy"; ignore_scaling_factors = true)
+# new requirement (these should match)
+get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement"; ignore_scaling_factors = true)
 
 #assign name
 decision_name = "deterministic_$wy"
@@ -985,24 +1003,19 @@ template_uc = ProblemTemplate()
 ##########################
 # storage
 define_storage_model(template_uc)
-
 # PHS
-# define_PHS_model(template_uc) To-Do: add PHS model
+# define_PHS_model(template_uc)
 
 # Define weather-dependent Device Models
 ##########################
-# thermal
-define_thermal_model(template_uc, wy)
-
-# hydro
-define_hydro_model(template_uc, wy)
-
 # load
 define_load_model(template_uc, wy)
-
+# thermal
+define_thermal_model(template_uc, wy)
+# hydro
+define_hydro_model(template_uc, wy)
 # renewable dispatch
 define_renewable_dispatch_model(template_uc, wy)
-
 # renewable non-dispatch
 define_renewable_non_dispatch_model(template_uc, wy)
 
@@ -1013,8 +1026,7 @@ define_branch_model(template_uc)
 # define the service model
 ###########################
 define_RegUp_service_model(template_uc) # remember: we already updated our timeseries for the active WY
-# define_RegDown_service_model(template_uc)
-
+define_RegDown_service_model(template_uc)
 
 # Q: What is a GroupReserve?
 # Q: what is an Aggregated Model?
