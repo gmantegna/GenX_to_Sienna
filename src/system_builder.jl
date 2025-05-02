@@ -797,13 +797,14 @@ function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::Dat
             ramp_limits_pump = nothing, # No ramp limits (not defined for pumped hydro)
             time_limits_pump = nothing, # No time limits (not defined for pumped hydro)
             storage_capacity = (up = duration_hours, down = duration_hours*2), # setting lower reservoir equal to 2x the upper reservoir
-            inflow = 0.0, # no natural inflow (closed system)
-            outflow = 0.0, # no natural outflow (closed system)
+            inflow = 0.0, # mandatory object; we will assign later
+            outflow = 0.0, # mandatory object; we will assign later
             initial_storage = (up = initial_storage_hours, down = initial_storage_hours*2), # initial storage level; units: hours
-            #storage_target = (up = 0.0, down = 0.0), # no storage target
+            storage_target = (up = 0.5, down = 0.5), # no storage target
             operation_cost = Op_Cost,
             pump_efficiency = charge_efficiency, # pumping efficiency
             conversion_factor = 1.0, # Conversion factor from flow to energy p.u.-hr
+            status = PSY.PumpHydroStatusModule.PumpHydroStatus.OFF, # initial status; default: "PumpHydroStatus.OFF"
             time_at_status = 10.0, # initial time at status
             services = Device[], # no services
             dynamic_injector = nothing, # no dynamic injector

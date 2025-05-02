@@ -521,9 +521,47 @@ function create_generic_requirement_reserveDown_timeseries(sys::System, WY::Int6
     add_time_series!(sys, reserve_down, new_ts)    
 end
 
+function create_PHS_PSY_timeseries(PHS_collection::Vector{HydroPumpedStorage})
+    # Initialize container for storing timeseries as nested dictionary
+    ts_container = Dict{String, Dict{String, SingleTimeSeries}}()
+    
+    # Define fixed calendar year timestamps (2035)
+    tstamps = collect(range(DateTime("2035-01-01T00:00:00"), DateTime("2035-12-31T23:00:00"), step = Dates.Hour(1)))
+    
+    # Create zero-valued array for all timestamps
+    zero_data = zeros(length(tstamps))
+    
+    # Loop through each PHS unit
+    for phs in PHS_collection
+        # Get the resource name
+        resource_name = get_name(phs)
+        
+        # Initialize inner dictionary for this resource
+        ts_container[resource_name] = Dict{String, SingleTimeSeries}()
+        
+        # Create inflow timeseries
+        inflow_ts = SingleTimeSeries(
+            name = "inflow",
+            data = TimeArray(tstamps, zero_data),
+            scaling_factor_multiplier = get_inflow,
+        )
+        
+        # Create outflow timeseries
+        outflow_ts = SingleTimeSeries(
+            name = "outflow",
+            data = TimeArray(tstamps, zero_data),
+            scaling_factor_multiplier = get_outflow,
+        )
+        
+        # Add to container using nested dictionary structure
+        ts_container[resource_name]["inflow"] = inflow_ts
+        ts_container[resource_name]["outflow"] = outflow_ts
+    end
+    
+    return ts_container
+end
 
 function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalStandard})
-
     # reassign fuel_price timeseries to ThermalStandard objects
     for g in thermal_standards
         if "fuel_price" ∈ get_name.(get_time_series_keys(g))
@@ -534,6 +572,31 @@ function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalSta
             new_ts = SingleTimeSeries("fuel_price", TimeArray(tstamp, vals))
             remove_time_series!(sys, SingleTimeSeries, g, "fuel_price")
             set_fuel_cost!(sys, g, new_ts)
+        end
+    end
+end
+
+function update_TS_PHS_flows!(sys::System, PHS_objects::Vector{HydroPumpedStorage})
+    # reassign inflow and outflow timeseries to PHS objects
+    for phs in PHS_objects
+        # Handle inflow timeseries
+        if "inflow" ∈ get_name.(get_time_series_keys(phs))
+            inflow_array = get_time_series_array(SingleTimeSeries, phs, "inflow"; ignore_scaling_factors = true)
+            tstamp = timestamp(inflow_array)
+            vals = values(inflow_array)
+            new_inflow_ts = SingleTimeSeries("inflow", TimeArray(tstamp, vals))
+            remove_time_series!(sys, SingleTimeSeries, phs, "inflow")
+            set_inflow!(sys, phs, new_inflow_ts)
+        end
+
+        # Handle outflow timeseries
+        if "outflow" ∈ get_name.(get_time_series_keys(phs))
+            outflow_array = get_time_series_array(SingleTimeSeries, phs, "outflow"; ignore_scaling_factors = true)
+            tstamp = timestamp(outflow_array)
+            vals = values(outflow_array)
+            new_outflow_ts = SingleTimeSeries("outflow", TimeArray(tstamp, vals))
+            remove_time_series!(sys, SingleTimeSeries, phs, "outflow")
+            set_outflow!(sys, phs, new_outflow_ts)
         end
     end
 end

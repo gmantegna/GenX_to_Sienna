@@ -472,6 +472,10 @@ get_initial_storage(active_component)
 get_pump_efficiency(active_component)
 get_active_power_limits(active_component)
 get_rating(active_component)
+get_status(active_component)
+# set_status!(active_component, PSY.PumpHydroStatusModule.PumpHydroStatus.GEN)
+#set_status!(active_component, PSY.PumpHydroStatusModule.PumpHydroStatus.OFF)
+#get_status(active_component)
 active_component.operation_cost # check operation cost
 
 # check to make sure no units with base power of 0 are in the system
@@ -557,7 +561,6 @@ renewable_ts_container = create_Renew_D_PSY_timeseries(gen_variability_ts_df, Re
 active_ts = renewable_ts_container["Southern_NV_Eldorado_Solar_SCE"]["1998"]
 active_ts.name
 active_ts.data
-
 
 # Add all the time series to system
 for (resource_name, year_ts_dict) in renewable_ts_container
@@ -706,7 +709,60 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 
 # Pumped Hydro  Generators
 ##########################
-# GENX has this pinned at 1 for all timesteps across all weather years; therefore not assigning any time series to the PHS objects
+# GENX has max_active_power  pinned at 1 for all timesteps across all weather years;
+# however we do need to create our PSY timeseries for the inflows and outflows
+
+# Create dictionary of time series for pumped hydro generators
+PHS_ts_container = create_PHS_PSY_timeseries(PHS_objects)
+
+# spot check the time series
+active_ts = PHS_ts_container["CAISO_Pumped_Hydro_PGE"]["inflow"]
+active_ts.name
+active_ts.data
+
+active_ts = PHS_ts_container["CAISO_Pumped_Hydro_PGE"]["outflow"]
+active_ts.name
+active_ts.data
+
+# Add all inflow and outflow time series to PHS objects
+for (resource_name, year_ts_dict) in PHS_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(HydroPumpedStorage, sys, resource_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this resource
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: ", resource_name)
+        end
+    else
+        @warn "Device $resource_name not found in the system. Time series not added."
+    end 
+end
+
+# check our work
+active_object = get_component(HydroPumpedStorage, sys, "CAISO_Pumped_Hydro_PGE")
+show_time_series(active_object)
+ts_key = get_time_series_keys(active_object)
+get_time_series_array(SingleTimeSeries, active_object, "inflow"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "outflow"; ignore_scaling_factors = true)
+
+#= # remove time series from PHS objects in system
+for gen in PHS_objects # loop through the collection of PHS objects
+    for i in length(get_time_series_keys(gen))
+        # retrieve the time series
+        ts_key = get_time_series_keys(gen)[i]
+        ts_name = get_name(ts_key)
+        # remove the time series
+        remove_time_series!(sys, SingleTimeSeries, gen, ts_name)
+    end
+end =#
+
+# now let's define our inflow and outflow timeseries for the PHS objects
+
+
+
 
 ##########################
 # Define Reserves
@@ -834,8 +890,7 @@ for service in reserveDown_services
         # remove the time series
         remove_time_series!(sys, SingleTimeSeries, service, ts_name)
     end
-end =#
-    
+end =#    
 
 ##########################
 # Define Fuel Time Series Info
@@ -925,23 +980,6 @@ for gen in get_components(x -> has_time_series(x), ThermalStandard, sys)
 end
  =#
 
-#################################
-# create timeseries fxs 
-#################################
-# create DeterministicSingleTimeSeries objects (48-hr horizon & 24-hr lookahead; i.e. 24 hour "realized intervals") 
-#transform_single_time_series!(sys, Hour(48), Hour(24)) #Q: do i need to define this now since i am redefining after i add reserves?
-
-# remove DeterministicSingleTimeSeries (i.e. forecasts) from ALL objects
-# remove_time_series!(sys, DeterministicSingleTimeSeries) # Troubleshooting
-
-
-# check your work
-active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
-show_time_series(active_component)
-ts_test = get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
-horizon = get_horizon(ts_test)
-interval = get_interval(ts_test) # note this command requires the infrastructuresystems pkg
-
 ##########################
 # Define Outage Data (#TO-DO))
 ##########################
@@ -965,15 +1003,25 @@ end
 
 wy = weather_years #To-Do: fix this by putting it in a loop for all weather years
 
-
 # assign our generic "requirement" timeseries for our reserveup service
 create_generic_requirement_reserveUp_timeseries(sys, wy)
 
 # assign our generic "requirement" timeseries for our reservedown service
 create_generic_requirement_reserveDown_timeseries(sys, wy)
 
-# redefine our forecasts
+#################################
+# create timeseries fxs 
+#################################
+# create DeterministicSingleTimeSeries objects (48-hr horizon & 24-hr lookahead; i.e. 24 hour "realized intervals") 
 transform_single_time_series!(sys, Hour(48), Hour(24))
+
+# check your work
+active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+show_time_series(active_component)
+ts_test = get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
+horizon = get_horizon(ts_test)
+interval = get_interval(ts_test) # note this command requires the infrastructuresystems pkg
+
 
 # check to make sure it worked
 #reserve up
@@ -1004,7 +1052,7 @@ template_uc = ProblemTemplate()
 # storage
 define_storage_model(template_uc)
 # PHS
-# define_PHS_model(template_uc)
+define_PHS_model(template_uc)
 
 # Define weather-dependent Device Models
 ##########################
