@@ -35,13 +35,13 @@ function initialize_paths_and_inputs()
     )
 end
 
-function process_demand_data(demand_data_path::String, zones_dict::OrderedDict{String,Int64})
-    # Read the demand data
+function process_demand_data(demand_data_path::String, zone_dict::OrderedDict{String,Int64})
+    # Read in the original GENX demand data
     demand_df = CSV.read(demand_data_path, DataFrame)
 
     # Create a mapping from zone numbers to zone names
     zone_number_to_name = Dict{Int,String}()
-    for (name, number) in zones_dict
+    for (name, number) in zone_dict
         zone_number_to_name[number] = name
     end
     
@@ -63,125 +63,57 @@ function process_demand_data(demand_data_path::String, zones_dict::OrderedDict{S
     # select only the demand columns and rename them
     select!(demand_df, demand_columns)
     DataFrames.rename!(demand_df, new_column_names)
+
+    # First extend the DataFrame by duplicating the last 24 entries
+    last_24_rows = demand_df[end-23:end, :]
+    demand_df = vcat(demand_df, last_24_rows)
     
-    # Create datetime vector for 1998-2020 (23 years)
-    dates = Vector{DateTime}()
-    demand_zones = Dict{String, Vector{Float64}}()
+    # Generate datetime range and add to DataFrame
+    start_date = DateTime(1998, 1, 1)
+    end_date = DateTime(2020, 12, 31, 23)
+    dates = collect(start_date:Dates.Hour(1):end_date)
     
-    # Initialize demand vectors for each zone using the new column names
-    for col_name in names(demand_df)
-        demand_zones[String(col_name)] = Float64[]
-    end
+    # Add datetime and index columns to DataFrame
+    demand_df.DateTime = dates
+    demand_df.Y_index = Dates.year.(dates)
+    demand_df.M_index = Dates.month.(dates)
+    demand_df.D_index = Dates.day.(dates)
     
-    # Process each year
-    for year in 1998:2020
-        # Determine number of days in year
-        days_in_year = Dates.isleapyear(year) ? 366 : 365
-        
-        for day in 1:days_in_year
-            # Skip leap days
-            if Dates.isleapyear(year) && day == 60  # February 29
-                continue
-            end
-            
-            # Add 24 hours for this day
-            for hour in 0:23
-                current_date = DateTime(year, 1, 1) + Dates.Day(day-1) + Dates.Hour(hour)
-                push!(dates, current_date)
-                
-                # Calculate index in the original data
-                # Need to account for skipped leap days in previous years
-                leap_days_before = sum(Dates.isleapyear.(1998:year-1))
-                if Dates.isleapyear(year) && day > 59  # After Feb 28 in leap year
-                    leap_days_before += 1
-                end
-                
-                data_index = ((year - 1998) * 365 + day - 1) * 24 + hour + 1 - leap_days_before
-                
-                # For 12/31/2020, use 12/30/2020 data
-                if year == 2020 && day == 365
-                    data_index = data_index - 24  # Use previous day's data
-                end
-                
-                # Add demand for each zone using new column names
-                for col_name in names(demand_df)
-                    push!(demand_zones[String(col_name)], demand_df[data_index, col_name])
-                end
-            end
-        end
-    end
+    #rearrange column order
+    demand_df = select!(demand_df, :Y_index, :M_index, :D_index, :DateTime, Not([:Y_index, :M_index, :D_index, :DateTime]))
     
-    # Create final DataFrame
-    result_df = DataFrame(:DateTime => dates) # initialize the DataFrame with the dates
-    for (zone_name, values) in demand_zones # loop through the demand zones and add the values to the DataFrame
-        result_df[!, zone_name] = values
-    end
-    
-    return result_df
+    # Filter out leap days (February 29th) using subset
+    demand_df = subset(demand_df, [:M_index, :D_index] => (x, y) -> .!((x .== 2) .& (y .== 29)))
+
+    return demand_df
 end
 
 function process_fuel_data(fuels_df::DataFrame)
-    
     # Drop the first row (CO2 emissions) and the first column (index)
     fuels_df = fuels_df[2:end, 2:end]
     
-    # Get all column names except the first (which is likely an index)
-    fuel_columns = names(fuels_df)
+    # First extend the DataFrame by duplicating the last 24 entries
+    last_24_rows = fuels_df[end-23:end, :]
+    fuels_df = vcat(fuels_df, last_24_rows)
     
-    # Create datetime vector for 1998-2020 (23 years)
-    dates = Vector{DateTime}()
-    fuel_prices = Dict{String, Vector{Float64}}()
+    # Generate datetime range and add to DataFrame
+    start_date = DateTime(1998, 1, 1)
+    end_date = DateTime(2020, 12, 31, 23)
+    dates = collect(start_date:Dates.Hour(1):end_date)
     
-    # Initialize fuel price vectors using the actual column names
-    for col_name in fuel_columns
-        fuel_prices[String(col_name)] = Float64[]
-    end
+    # Add datetime and index columns to DataFrame
+    fuels_df.DateTime = dates
+    fuels_df.Y_index = Dates.year.(dates)
+    fuels_df.M_index = Dates.month.(dates)
+    fuels_df.D_index = Dates.day.(dates)
     
-    # Process each year
-    for year in 1998:2020
-        # Determine number of days in year
-        days_in_year = Dates.isleapyear(year) ? 366 : 365
-        
-        for day in 1:days_in_year
-            # Skip leap days
-            if Dates.isleapyear(year) && day == 60  # February 29
-                continue
-            end
-            
-            # Add 24 hours for this day
-            for hour in 0:23
-                current_date = DateTime(year, 1, 1) + Dates.Day(day-1) + Dates.Hour(hour)
-                push!(dates, current_date)
-                
-                # Calculate index in the original data
-                # Need to account for skipped leap days in previous years
-                leap_days_before = sum(Dates.isleapyear.(1998:year-1))
-                if Dates.isleapyear(year) && day > 59  # After Feb 28 in leap year
-                    leap_days_before += 1
-                end
-                
-                data_index = ((year - 1998) * 365 + day - 1) * 24 + hour + 1 - leap_days_before
-                
-                # For 12/31/2020, use 12/30/2020 data
-                if year == 2020 && day == 365
-                    data_index = data_index - 24  # Use previous day's data
-                end
-                
-                # Add fuel prices using actual column names
-                for col_name in fuel_columns
-                    push!(fuel_prices[String(col_name)], fuels_df[data_index, col_name])
-                end
-            end
-        end
-    end
+    # Rearrange column order
+    fuels_df = select!(fuels_df, :Y_index, :M_index, :D_index, :DateTime, Not([:Y_index, :M_index, :D_index, :DateTime]))
     
-    # Create final DataFrame
-    result_df = DataFrame(:DateTime => dates)
-    for (fuel_name, values) in fuel_prices
-        result_df[!, fuel_name] = values
-    end
-    
-    return result_df
+    # Filter out leap days (February 29th) using subset
+    fuels_df = subset(fuels_df, [:M_index, :D_index] => (x, y) -> .!((x .== 2) .& (y .== 29)))
+
+    return fuels_df
 end
 
 function process_generator_variability_data(gen_var_data_path::String)
@@ -191,63 +123,28 @@ function process_generator_variability_data(gen_var_data_path::String)
     # Drop the first column (time index)
     select!(gen_var_df, Not(1))
     
-    # Get all generator columns
-    generator_columns = names(gen_var_df)
+    # First extend the DataFrame by duplicating the last 24 entries
+    last_24_rows = gen_var_df[end-23:end, :]
+    gen_var_df = vcat(gen_var_df, last_24_rows)
     
-    # Create datetime vector for 1998-2020 (23 years)
-    dates = Vector{DateTime}()
-    generator_profiles = Dict{String, Vector{Float64}}()
+    # Generate datetime range and add to DataFrame
+    start_date = DateTime(1998, 1, 1)
+    end_date = DateTime(2020, 12, 31, 23)
+    dates = collect(start_date:Dates.Hour(1):end_date)
     
-    # Initialize generator profile vectors using the actual column names
-    for col_name in generator_columns
-        generator_profiles[String(col_name)] = Float64[]
-    end
+    # Add datetime and index columns to DataFrame
+    gen_var_df.DateTime = dates
+    gen_var_df.Y_index = Dates.year.(dates)
+    gen_var_df.M_index = Dates.month.(dates)
+    gen_var_df.D_index = Dates.day.(dates)
     
-    # Process each year
-    for year in 1998:2020
-        # Determine number of days in year
-        days_in_year = Dates.isleapyear(year) ? 366 : 365
-        
-        for day in 1:days_in_year
-            # Skip leap days
-            if Dates.isleapyear(year) && day == 60  # February 29
-                continue
-            end
-            
-            # Add 24 hours for this day
-            for hour in 0:23
-                current_date = DateTime(year, 1, 1) + Dates.Day(day-1) + Dates.Hour(hour)
-                push!(dates, current_date)
-                
-                # Calculate index in the original data
-                # Need to account for skipped leap days in previous years
-                leap_days_before = sum(Dates.isleapyear.(1998:year-1))
-                if Dates.isleapyear(year) && day > 59  # After Feb 28 in leap year
-                    leap_days_before += 1
-                end
-                
-                data_index = ((year - 1998) * 365 + day - 1) * 24 + hour + 1 - leap_days_before
-                
-                # For 12/31/2020, use 12/30/2020 data
-                if year == 2020 && day == 365
-                    data_index = data_index - 24  # Use previous day's data
-                end
-                
-                # Add generator profiles using actual column names
-                for col_name in generator_columns
-                    push!(generator_profiles[String(col_name)], gen_var_df[data_index, col_name])
-                end
-            end
-        end
-    end
+    # Rearrange column order
+    gen_var_df = select!(gen_var_df, :Y_index, :M_index, :D_index, :DateTime, Not([:Y_index, :M_index, :D_index, :DateTime]))
     
-    # Create final DataFrame
-    result_df = DataFrame(:DateTime => dates)
-    for (generator_name, values) in generator_profiles
-        result_df[!, generator_name] = values
-    end
-    
-    return result_df
+    # Filter out leap days (February 29th) using subset
+    gen_var_df = subset(gen_var_df, [:M_index, :D_index] => (x, y) -> .!((x .== 2) .& (y .== 29)))
+
+    return gen_var_df
 end
 
 function create_storage_parameters_df(Storage_objects::Vector{EnergyReservoirStorage}, output_path::String)

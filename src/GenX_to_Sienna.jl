@@ -218,6 +218,9 @@ demand_data_path = joinpath(paths[:data_dir], "system", "Demand_data.csv")
 # call the function to generate the demand timeseries df
 demand_ts_df = process_demand_data(demand_data_path, zone_dict)
 
+# let's write the power loads to a csv file
+CSV.write(joinpath(paths[:data_dir], "demand_ts_df_8760.csv"), demand_ts_df)
+
 # Let's create our power loads dictionary
 power_loads_dict = create_power_loads(demand_ts_df, sys);
 
@@ -248,8 +251,7 @@ create_powerload_parameters_df(sys, paths);
     remove_component!(sys, Power_Load)
 end =#
 
-#= # let's write the power loads to a csv file
-CSV.write(joinpath(paths[:data_dir], "Power_loads.csv"), demand_ts_df) =#
+
 
 ##########################
 # Define Generators / Storage Devices 
@@ -477,7 +479,6 @@ get_status(active_component)
 #set_status!(active_component, PSY.PumpHydroStatusModule.PumpHydroStatus.OFF)
 #get_status(active_component)
 active_component.operation_cost # check operation cost
-
 # check to make sure no units with base power of 0 are in the system
 show_components(HydroPumpedStorage, sys, [:base_power])
 
@@ -516,7 +517,8 @@ generator_variability_data_path = joinpath(paths[:data_dir], "system", "Generato
 # call the function to generate the generator profile timeseries df
 gen_variability_ts_df = process_generator_variability_data(generator_variability_data_path)
 
-#= # let's write the gen_variability_ts_df to a csv file
+
+#= # TROUBLESHOOTING:  the gen_variability_ts_df to a csv file
 CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variability_ts_df) =#
 
 # Power Loads
@@ -525,7 +527,7 @@ CSV.write(joinpath(paths[:data_dir], "Generators_variability.csv"), gen_variabil
 PL_ts_container = create_demand_PSY_timeseries(demand_ts_df, power_loads_dict)
 
 #spot check the time series
-active_ts = PL_ts_container["PGE"]["1998"]
+active_ts = PL_ts_container["PGE"]["2001"]
 active_ts.name
 active_ts.data
 
@@ -549,8 +551,8 @@ end
 # let's check our work
 active_load = get_component(PowerLoad, sys, "Load_PGE")
 show_time_series(active_load) # now we have time series attached to the PowerLoad object
-get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ignore_scaling_factors = true) #p.u.; units: device base 
-get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ignore_scaling_factors = false) # natural units
+get_time_series_array(SingleTimeSeries, active_load, "max_active_power_2001"; ignore_scaling_factors = true) #p.u.; units: device base 
+get_time_series_array(SingleTimeSeries, active_load, "max_active_power_2001"; ignore_scaling_factors = false) # natural units
 
 # Renewable Dispatch Generators
 ##########################
@@ -558,7 +560,7 @@ get_time_series_array(SingleTimeSeries, active_load, "max_active_power_1998"; ig
 renewable_ts_container = create_Renew_D_PSY_timeseries(gen_variability_ts_df, Renew_D_generators)
 
 # spot check the time series
-active_ts = renewable_ts_container["Southern_NV_Eldorado_Solar_SCE"]["1998"]
+active_ts = renewable_ts_container["Southern_NV_Eldorado_Solar_SCE"]["2001"]
 active_ts.name
 active_ts.data
 
@@ -585,8 +587,8 @@ show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
 ts_size = get_time_series_keys(active_object).size
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
 
 #= # remove time series of RenewableDispatch objects from system
 for gen in Renew_D_objects # loop through the collection of RenewableDispatch objects
@@ -632,8 +634,8 @@ show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
 ts_size = get_time_series_keys(active_object).size
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
 
 # Thermal Standard Generators
 ##########################
@@ -641,7 +643,7 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 ThermalStandard_ts_container = create_ThermalStandard_PSY_timeseries(gen_variability_ts_df,ThermalStandard_generators)
 
 # spot check the time series
-active_ts = ThermalStandard_ts_container["CAISO_CCGT1_PGE"]["1998"]
+active_ts = ThermalStandard_ts_container["CAISO_CCGT1_PGE"]["2001"]
 active_ts.name
 active_ts.data
 
@@ -668,8 +670,8 @@ show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
 ts_size = get_time_series_keys(active_object).size
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
 
 # Hydro Generators
 ##########################
@@ -677,7 +679,7 @@ get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; 
 Hydro_ts_container = create_Hydro_PSY_timeseries(gen_variability_ts_df,HydroDispatch_generators)
 
 # spot check the time series
-active_ts = Hydro_ts_container["CAISO_Hydro_PGE"]["1998"]
+active_ts = Hydro_ts_container["CAISO_Hydro_PGE"]["2001"]
 active_ts.name
 active_ts.data
 
@@ -704,8 +706,8 @@ show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
 ts_size = get_time_series_keys(active_object).size
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
 
 # Pumped Hydro  Generators
 ##########################
@@ -760,9 +762,6 @@ for gen in PHS_objects # loop through the collection of PHS objects
 end =#
 
 # now let's define our inflow and outflow timeseries for the PHS objects
-
-
-
 
 ##########################
 # Define Reserves
@@ -899,8 +898,8 @@ end =#
 fuels_df = CSV.read(joinpath(paths[:data_dir], "system", "Fuels_data.csv"), DataFrame)
 fuel_ts_df = process_fuel_data(fuels_df)
 
-# Troubleshooting: write the fuels_df to a csv for visual inspection
-CSV.write(joinpath(paths[:data_dir], "fuels_data.csv"), fuel_ts_df)
+#= # Troubleshooting: write the fuels_df to a csv for visual inspection
+CSV.write(joinpath(paths[:data_dir], "fuels_data.csv"), fuel_ts_df) =#
 
 # Create fuel price timeseries by fuel type
 fuel_price_ts_dict = create_fuel_price_PSY_timeseries(fuel_ts_df)
@@ -1004,10 +1003,10 @@ end
 wy = weather_years #To-Do: fix this by putting it in a loop for all weather years
 
 # assign our generic "requirement" timeseries for our reserveup service
-create_generic_requirement_reserveUp_timeseries(sys, wy)
+create_generic_requirement_reserveUp_timeseries(sys, wy);
 
 # assign our generic "requirement" timeseries for our reservedown service
-create_generic_requirement_reserveDown_timeseries(sys, wy)
+create_generic_requirement_reserveDown_timeseries(sys, wy);
 
 #################################
 # create timeseries fxs 
