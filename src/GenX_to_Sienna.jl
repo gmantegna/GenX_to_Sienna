@@ -197,6 +197,7 @@ end
 # let's check our work
 get_components(TransmissionInterface, sys)
 show_components(TransmissionInterface, sys)
+
 # define collection of transmission interfaces
 transmission_interfaces = collect(get_components(TransmissionInterface, sys))
 active_component = transmission_interfaces[1]
@@ -245,13 +246,10 @@ power_loads = collect(get_components(PowerLoad, sys));
 file_path = joinpath(paths[:data_dir], "powerload_parameters.csv");
 create_powerload_parameters_df(sys, paths);
 
-
 # remove all powerloads from system
 #= for Power_Load in collect(get_components(PowerLoad, sys))
     remove_component!(sys, Power_Load)
 end =#
-
-
 
 ##########################
 # Define Generators / Storage Devices 
@@ -673,8 +671,9 @@ ts_size = get_time_series_keys(active_object).size
 get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
 get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
 
-# Hydro Generators
+# Hydro Max Active Power
 ##########################
+
 # Create dictionary of time series for thermal standard non-dispatch generators
 Hydro_ts_container = create_Hydro_PSY_timeseries(gen_variability_ts_df,HydroDispatch_generators)
 
@@ -683,8 +682,38 @@ active_ts = Hydro_ts_container["CAISO_Hydro_PGE"]["2001"]
 active_ts.name
 active_ts.data
 
-# Add all the time series to system
+# Add all the max_active_power time series to system
 for (resource_name, year_ts_dict) in Hydro_ts_container
+    # Retrieve the active device by its name
+    active_device = get_component(HydroDispatch, sys, resource_name)
+
+    if active_device !== nothing
+        # Loop through each year's time series for this resource
+        for (year, time_series) in year_ts_dict
+            # Add the time series to the system
+            add_time_series!(sys, active_device, time_series)
+            println("Added time series: ", time_series.name, " for year ", year, " to device: ", resource_name)
+        end
+    else
+        @warn "Device $resource_name not found in the system. Time series not added."
+    end
+end
+
+# Hydro Energy Budgets
+##########################
+# define budget df timeseries
+hydro_budget_ts_df = process_hydro_budget_data(joinpath(paths[:data_dir], "system", "Hourly_energy_budget.csv"))
+
+# Create dictionary of time series for thermal standard non-dispatch generators
+Hydro_budget_ts_container = create_Hydro_Budget_PSY_timeseries(hydro_budget_ts_df,HydroDispatch_generators)
+
+# spot check the time series
+active_ts = Hydro_budget_ts_container["CAISO_Hydro_PGE"]["2001"]
+active_ts.name
+active_ts.data
+
+# Add all the hydro budget time series to system
+for (resource_name, year_ts_dict) in Hydro_budget_ts_container 
     # Retrieve the active device by its name
     active_device = get_component(HydroDispatch, sys, resource_name)
 
@@ -1008,6 +1037,9 @@ create_generic_requirement_reserveUp_timeseries(sys, wy);
 # assign our generic "requirement" timeseries for our reservedown service
 create_generic_requirement_reserveDown_timeseries(sys, wy);
 
+# assign our generic "hydro_budget" timeseries for our hydro units
+create_generic_hydrobudget_timeseries(sys, wy, HydroDispatch_generators);
+
 #################################
 # create timeseries fxs 
 #################################
@@ -1038,6 +1070,11 @@ show_time_series(reserveDown_services[1])
 get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement_down_$wy"; ignore_scaling_factors = true)
 # new requirement (these should match)
 get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement"; ignore_scaling_factors = true)
+
+# hydro budget
+##########################
+get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget_$wy"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true)
 
 #assign name
 decision_name = "deterministic_$wy"
@@ -1070,10 +1107,11 @@ define_renewable_non_dispatch_model(template_uc, wy)
 ###########################
 define_branch_model(template_uc)
 
-# define the service model
+# define the service models
 ###########################
 define_RegUp_service_model(template_uc) # remember: we already updated our timeseries for the active WY
 define_RegDown_service_model(template_uc)
+
 
 # Q: What is a GroupReserve?
 # Q: what is an Aggregated Model?

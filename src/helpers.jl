@@ -147,6 +147,37 @@ function process_generator_variability_data(gen_var_data_path::String)
     return gen_var_df
 end
 
+function process_hydro_budget_data(hydro_budget_data_path::String)
+    # Read the hydro budget data
+    hydro_budget_df = CSV.read(hydro_budget_data_path, DataFrame)
+
+    # drop first column (time index)
+    select!(hydro_budget_df, Not(1))
+    
+    # First extend the DataFrame by duplicating the last 24 entries
+    last_24_rows = hydro_budget_df[end-23:end, :]
+    hydro_budget_df = vcat(hydro_budget_df, last_24_rows)
+    
+    # Generate datetime range and add to DataFrame
+    start_date = DateTime(1998, 1, 1)
+    end_date = DateTime(2020, 12, 31, 23)
+    dates = collect(start_date:Dates.Hour(1):end_date)
+    
+    # Add datetime and index columns to DataFrame
+    hydro_budget_df.DateTime = dates
+    hydro_budget_df.Y_index = Dates.year.(dates)
+    hydro_budget_df.M_index = Dates.month.(dates)
+    hydro_budget_df.D_index = Dates.day.(dates)
+    
+    # Rearrange column order
+    hydro_budget_df = select!(hydro_budget_df, :Y_index, :M_index, :D_index, :DateTime, Not([:Y_index, :M_index, :D_index, :DateTime]))
+    
+    # Filter out leap days (February 29th) using subset
+    hydro_budget_df = subset(hydro_budget_df, [:M_index, :D_index] => (x, y) -> .!((x .== 2) .& (y .== 29)))
+
+    return hydro_budget_df
+end
+
 function create_storage_parameters_df(Storage_objects::Vector{EnergyReservoirStorage}, output_path::String)
     # Create DataFrame with column names matching the parameters we want to check
     df_storage = DataFrame(

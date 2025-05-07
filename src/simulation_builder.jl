@@ -47,11 +47,14 @@ end
 
 function define_hydro_model(template_uc, WY)
     # Define Hydro model
-    hydro_model = DeviceModel(HydroDispatch,HydroDispatchRunOfRiver;
-        time_series_names = Dict(PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY"))
+    hydro_model = DeviceModel(HydroDispatch,HydroDispatchRunOfRiverBudget; #HydroDispatchRunOfRiver
+        time_series_names = Dict{Any, String}(
+            PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY",
+            HydroPowerSimulations.EnergyBudgetTimeSeriesParameter => "hydro_budget"))
     
     # assign the hydro model to the template_uc
     PowerSimulations.set_device_model!(template_uc, hydro_model)
+
 end
 
 function define_load_model(template_uc, WY)
@@ -149,6 +152,12 @@ function define_RegDown_service_model(template_uc)
     # Assign the service model to the template_uc
     PowerSimulations.set_service_model!(template_uc, reg_reserve_down_model)
 end
+
+#= # TX interface
+function define_TX_interface_model(template_uc)
+    # Assign the service model to the template_uc
+    PowerSimulations.set_service_model!(template_uc, TransmissionInterface, ConstantMaxInterfaceFlow)
+end =#
 
 
 #################################

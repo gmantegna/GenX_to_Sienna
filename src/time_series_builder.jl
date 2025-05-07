@@ -307,6 +307,57 @@ function create_Hydro_PSY_timeseries(gen_variability_ts::DataFrame, Hydro_collec
     return ts_container
 end
 
+function create_Hydro_Budget_PSY_timeseries(hydro_budget_ts::DataFrame, Hydro_collection::Vector{HydroDispatch})
+    # Initialize container for storing timeseries as nested dictionary
+    ts_container = Dict{String, Dict{String, SingleTimeSeries}}()
+    
+    # Define fixed calendar year timestamps (2035)
+    tstamps = collect(range(DateTime("2035-01-01T00:00:00"), DateTime("2035-12-31T23:00:00"), step = Dates.Hour(1)))
+    
+    # Get unique years from the DateTime column and sort them
+    years = sort(unique(Dates.year.(hydro_budget_ts.DateTime)))
+    
+    # Loop through each hydro generator
+    for hydro in Hydro_collection
+        # Get the resource name
+        resource_name = get_name(hydro)
+        
+        # Initialize inner dictionary for this resource
+        ts_container[resource_name] = Dict{String, SingleTimeSeries}()
+        
+        # Loop through each year in sorted order
+        for year in years
+            # Filter data for this year and sort by DateTime
+            year_data = sort(hydro_budget_ts[Dates.year.(hydro_budget_ts.DateTime) .== year, :], :DateTime)
+            
+            # Get the budget column for this generator
+            if !hasproperty(year_data, Symbol(resource_name))
+                @warn "No budget data found for generator $resource_name in year $year"
+                continue
+            end
+            
+            # Get the budget data (already in p.u.)
+            budget_data = year_data[!, Symbol(resource_name)]
+            
+            # Create the timeseries name with year suffix
+            ts_name = "hydro_budget_$year"
+            
+            # Create the SingleTimeSeries object using fixed 2035 timestamps
+            ts = SingleTimeSeries(;
+                name = ts_name,
+                data = TimeArray(tstamps, budget_data),
+                scaling_factor_multiplier = get_max_active_power,
+            )
+            
+            # Add to container using nested dictionary structure
+            ts_container[resource_name][string(year)] = ts
+        end
+    end
+    
+    return ts_container
+end
+
+
 function create_reg_reserve_PSY_timeseries(
     demand_ts_df::DataFrame,
     gen_variability_ts_df::DataFrame,
@@ -521,6 +572,35 @@ function create_generic_requirement_reserveDown_timeseries(sys::System, WY::Int6
     add_time_series!(sys, reserve_down, new_ts)    
 end
 
+function create_generic_hydrobudget_timeseries(sys::System, WY::Int64, hydro_collection::Vector{HydroDispatch})
+    # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
+    remove_time_series!(sys, DeterministicSingleTimeSeries)
+
+    # Loop through each hydro unit
+    for hydro in hydro_collection
+        # Check if "hydro_budget" timeseries already exists and remove it if it does
+        if "hydro_budget" ∈ get_name.(get_time_series_keys(hydro))
+            remove_time_series!(sys, SingleTimeSeries, hydro, "hydro_budget")
+        end
+        
+        # Get the timeseries array for the specific weather year
+        ts_array = get_time_series_array(SingleTimeSeries, hydro, "hydro_budget_$WY"; ignore_scaling_factors = true)
+        
+        # Create a new timeseries with the same data but named "hydro_budget"
+        tstamp = timestamp(ts_array)
+        vals = values(ts_array)
+        new_ts = SingleTimeSeries(
+            name = "hydro_budget",
+            data = TimeArray(tstamp, vals),
+            scaling_factor_multiplier = get_max_active_power
+        )
+        
+        # Add the new timeseries to the hydro unit
+        add_time_series!(sys, hydro, new_ts)
+    end
+end
+
+
 function create_PHS_PSY_timeseries(PHS_collection::Vector{HydroPumpedStorage})
     # Initialize container for storing timeseries as nested dictionary
     ts_container = Dict{String, Dict{String, SingleTimeSeries}}()
@@ -600,5 +680,6 @@ function update_TS_PHS_flows!(sys::System, PHS_objects::Vector{HydroPumpedStorag
         end
     end
 end
+
 
 

@@ -514,7 +514,6 @@ function create_btm_objects(sys::System, vre_df::DataFrame, capacity_df::DataFra
     return RenewableNonDispatch_dict
 end
 
-
 function create_Hydro_objects(sys::System, hydro_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
     
     #initialize hydro dispatch dictionary
