@@ -332,14 +332,14 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
         # define prime mover type using the key-value mapping from MoverTypesMapping.csv
         if !haskey(PM_type_dict, resource_name)
             @warn "No prime mover type mapping found for resource $resource_name in MoverTypesMapping.csv"
-            PM_type = PrimeMovers.OT  # Default to Other if not found
+            PM_type = "OT"  # Default to Other if not found
         else
             PM_type = getproperty(PrimeMovers, Symbol(PM_type_dict[resource_name]))
         end
 
         # define fuel type
         fuel_GENX = thermal_df[i, :Fuel]
-        matching_rows = fuel_mapping_df[fuel_mapping_df.fuel_price_fx .== fuel_GENX, :sienna_fuel_type]
+        matching_rows = fuel_mapping_df[fuel_mapping_df.genx_fuel_type .== fuel_GENX, :sienna_fuel_type]
         if isempty(matching_rows)
             @warn "No fuel mapping found for GENX fuel type $fuel_GENX"
             fuel_PSY = "OTHER" # assign OTHER as default
@@ -362,7 +362,7 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
             operation_cost = Op_Cost, # TO-DO  time series for varying fuel prices and fuel-related start costs
             base_power = capacity_mw, # setting base power equal to nameplate capacity
             time_limits = (up = MUT, down = MDT), # Hours, unaffected by per-unitization
-            must_run = false, # To-Do assign must-run status to baseload non-dispatchable resources
+            must_run = false, # Default to false, will be updated later
             prime_mover_type = PM_type, # assign Prime Mover Type 
             fuel = fuel_PSY, #assign ThermalFuels via direct string (i.e. $FuelType - not "ThermalFuels.$FuelType")
         )
@@ -372,6 +372,31 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
 
     end
     return thermal_standards
+end
+
+function update_TS_must_run_status!(TS_collection::Vector{ThermalStandard})
+    # Loop through all thermal standard generators
+    for gen in TS_collection
+
+
+        # Get the fuel type and prime mover type
+        fuel_type = string(get_fuel(gen))
+        pm_type = get_prime_mover_type(gen)
+        
+        # default value
+        must_run = false # default value
+
+        # Set must_run flag based on fuel type and prime mover type
+        if fuel_type in ["WOOD_WASTE", "GEOTHERMAL", "NUCLEAR"]
+            must_run = true
+        end
+        if pm_type == PrimeMovers.OT
+            must_run = true
+        end
+        
+        # Update the must_run status
+        set_must_run!(gen, must_run)
+    end
 end
 
 function create_VRE_objects(sys::System, vre_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
@@ -416,7 +441,7 @@ function create_VRE_objects(sys::System, vre_df::DataFrame, capacity_df::DataFra
         # define prime mover type using the key-value mapping from MoverTypesMapping.csv
         if !haskey(PM_type_dict, resource_name)
             @warn "No prime mover type mapping found for resource $resource_name in MoverTypesMapping.csv"
-            PM_type = PrimeMovers.OT  # Default to Other if not found
+            PM_type = "OT"  # Default to Other if not found
         else
             PM_type = getproperty(PrimeMovers, Symbol(PM_type_dict[resource_name]))
         end

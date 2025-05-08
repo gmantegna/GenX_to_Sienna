@@ -77,8 +77,8 @@ buses = collect(get_components(ACBus, sys))
 # let's check our work
 get_components(ACBus, sys)
 show_components(ACBus, sys)
-active_component = get_component(ACBus, sys, "BANC")
-get_number(active_component)
+active_object = get_component(ACBus, sys, "BANC")
+get_number(active_object)
 
 # Areas
 ##########################
@@ -98,12 +98,12 @@ end
 # let's check our work
 get_components(Area, sys)
 show_components(Area, sys)
-active_component = collect(get_components(Area, sys))[1]
-get_name(active_component)
+active_object = collect(get_components(Area, sys))[1]
+get_name(active_object)
 
 # let's verify bus to area assignments
-active_component = collect(get_components(ACBus, sys))[2]
-get_name(get_area(active_component))
+active_object = collect(get_components(ACBus, sys))[2]
+get_name(get_area(active_object))
 
 # define collection of areas
 areas = collect(get_components(Area, sys))
@@ -140,10 +140,10 @@ show_components(Line, sys)
 # define collection of lines
 lines = collect(get_components(Line, sys));
 
-active_component = lines[1]
-get_name(active_component)
-get_arc(active_component)
-get_rating(active_component)
+active_object = lines[1]
+get_name(active_object)
+get_arc(active_object)
+get_rating(active_object)
 
 # Create and write line parameters to CSV
 file_path = joinpath(paths[:data_dir], "line_parameters.csv")
@@ -170,12 +170,12 @@ show_components(AreaInterchange, sys)
 # define collection of area interchanges
 area_interchanges = collect(get_components(AreaInterchange, sys))
 
-active_component = area_interchanges[1]
-get_name(active_component)
-get_from_area(active_component)
-get_to_area(active_component)
-get_flow_limits(active_component)
-get_flow_limits(active_component).from_to
+active_object = area_interchanges[1]
+get_name(active_object)
+get_from_area(active_object)
+get_to_area(active_object)
+get_flow_limits(active_object)
+get_flow_limits(active_object).from_to
 
 # Create and write area interchange parameters to CSV
 file_path = joinpath(paths[:data_dir], "area_interchange_parameters.csv")
@@ -200,10 +200,10 @@ show_components(TransmissionInterface, sys)
 
 # define collection of transmission interfaces
 transmission_interfaces = collect(get_components(TransmissionInterface, sys))
-active_component = transmission_interfaces[1]
-get_name(active_component)
-get_active_power_flow_limits(active_component)
-get_direction_mapping(active_component)
+active_object = transmission_interfaces[1]
+get_name(active_object)
+get_active_power_flow_limits(active_object)
+get_direction_mapping(active_object)
 
 # Create and write transmission interface parameters to CSV
 file_path = joinpath(paths[:data_dir], "transmission_interface_parameters.csv");
@@ -233,11 +233,11 @@ end
 # Let's check our work
 get_components(PowerLoad, sys)
 show_components(PowerLoad, sys)
-active_component = get_component(PowerLoad, sys, "Load_PGE")
-get_name(active_component)
-get_base_power(active_component)
-get_active_power(active_component)
-get_bus(active_component)
+active_object = get_component(PowerLoad, sys, "Load_PGE")
+get_name(active_object)
+get_base_power(active_object)
+get_active_power(active_object)
+get_bus(active_object)
 
 # define collection of power loads
 power_loads = collect(get_components(PowerLoad, sys));
@@ -275,6 +275,13 @@ storage_type_dict = Dict((row.Key) => row.Value for row in eachrow(storage_type_
 # read in thermal data
 thermal_df = CSV.read(joinpath(paths[:data_dir], "resources", "Thermal.csv"), DataFrame);
 
+# Update fuel type for geothermal resources
+for i in 1:nrow(thermal_df)
+    if occursin("Geothermal", thermal_df[i, :Resource])
+        thermal_df[i, :Fuel] = "Geothermal"
+    end
+end
+
 # define thermal generator objects
 ThermalStandard_dict = create_ThermalStandard_objects(sys, thermal_df, capacity_df, PM_type_dict, fuel_mapping_df, zone_dict);
     
@@ -283,32 +290,41 @@ for (thermal_name, thermal_object) in ThermalStandard_dict
     add_component!(sys, thermal_object)
 end
 
-#= # remove all thermal generators from system
-for Thermal_Standard in collect(get_components(ThermalStandard, sys))
-    remove_component!(sys, Thermal_Standard)
-end =#
-
 # define collection of thermal generators
-ThermalStandard_generators = collect(get_components(ThermalStandard, sys))
+ThermalStandard_generators = collect(get_components(ThermalStandard, sys));
 
-# Check your work
-active_component = ThermalStandard_generators[5]
+active_object = get_component(ThermalStandard, sys, "CAISO_Biomass_PGE")
 
-get_name(active_component)
-get_base_power(active_component) #installed nameplate capacity (MW)   
-get_bus(active_component)
-get_rating(active_component)
-get_active_power_limits(active_component)
-get_time_limits(active_component)
-get_fuel(active_component)
-active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+# Update must-run status for baseload ThermalStandard objects (biomass, geothermal, nuclear, CHP)
+update_TS_must_run_status!(ThermalStandard_generators)
 
-show_time_series(active_component)
-# get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
-# get_time_series_array(DeterministicSingleTimeSeries, active_component, "fuel_price")
+# Check your work by visually inspecting the must_run status of the thermal generators
+show_components(ThermalStandard, sys, [:must_run])
+
+# check other attributes of a ThermalStandard
+active_object = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+
+get_name(active_object)
+get_base_power(active_object) #installed nameplate capacity (MW)   
+get_bus(active_object)
+get_rating(active_object)
+get_active_power_limits(active_object)
+get_time_limits(active_object)
+get_fuel(active_object)
+active_object.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+
+show_time_series(active_object)
+# get_time_series(DeterministicSingleTimeSeries, active_object, "fuel_price")
+# get_time_series_array(DeterministicSingleTimeSeries, active_object, "fuel_price")
 
 #check to make sure no units with base power of 0 are in the system
 show_components(ThermalStandard, sys, [:base_power])
+
+# remove all thermal generators from system
+#= for Thermal_Standard in collect(get_components(ThermalStandard, sys))
+    remove_component!(sys, Thermal_Standard)
+end =#
+
 
 # Renewable Dispatch Generators (i.e., VRE) 
 ##########################
@@ -327,13 +343,13 @@ end
 Renew_D_generators = collect(get_components(RenewableDispatch, sys))
 
 # Check your work
-active_component = Renew_D_generators[5]
+active_object = Renew_D_generators[5]
 
-get_name(active_component)
-get_base_power(active_component) #installed nameplate capacity (MW)   
-show_time_series(active_component) # no time series attached to this component (yet)
-active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
-show_time_series(active_component) # no time series attached to this component (yet)
+get_name(active_object)
+get_base_power(active_object) #installed nameplate capacity (MW)   
+show_time_series(active_object) # no time series attached to this component (yet)
+active_object.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+show_time_series(active_object) # no time series attached to this component (yet)
 
 #check to make sure no units with base power of 0 are in the system
 show_components(RenewableDispatch, sys, [:base_power])
@@ -362,11 +378,11 @@ if isfile(joinpath(paths[:data_dir], "resources", "Must_run.csv"))
     Renew_ND_generators = collect(get_components(RenewableNonDispatch, sys))
 
     # Check your work
-    active_component = Renew_ND_generators[3]
+    active_object = Renew_ND_generators[3]
 
-    get_name(active_component)
-    get_base_power(active_component) #installed nameplate capacity (MW)   
-    show_time_series(active_component) # no time series attached to this component (yet)
+    get_name(active_object)
+    get_base_power(active_object) #installed nameplate capacity (MW)   
+    show_time_series(active_object) # no time series attached to this component (yet)
 
 else
     # do nothing
@@ -375,7 +391,7 @@ end
 #check to make sure no units with base power of 0 are in the system
 show_components(RenewableNonDispatch, sys, [:base_power])
 
-# Hydro Generators 
+# Hydro Generators (HydroDispatch) 
 ##########################
 # read in hydro generator data
 hydro_df = CSV.read(joinpath(paths[:data_dir], "resources", "Hydro.csv"), DataFrame);
@@ -392,13 +408,29 @@ end
 HydroDispatch_generators = collect(get_components(HydroDispatch, sys))
 
 # Check your work
-active_component = HydroDispatch_generators[3]
+active_object = HydroDispatch_generators[3]
 
-get_name(active_component)
-get_base_power(active_component) #installed nameplate capacity (MW)   
-show_time_series(active_component) # no time series attached to this component (yet)
-active_component.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
-show_time_series(active_component) # no time series attached to this component (yet)
+get_name(active_object)
+get_base_power(active_object) #installed nameplate capacity (MW)   
+show_time_series(active_object) # no time series attached to this component (yet)
+active_object.operation_cost #note how fuel_cost has a fixed value specified (this is ignoring the ts we have attached)
+show_time_series(active_object) # no time series attached to this component (yet)
+
+#= # Check for missing hydro_budget time series and handle existing ones
+for hydro in HydroDispatch_generators
+    println(get_name(hydro))
+    # show_time_series(hydro)
+    if !has_time_series(hydro)
+        @warn "Hydro resource $(get_name(hydro)) has no timeseries"
+    elseif has_time_series(hydro)
+        #check if "hydro_budget" timeseries is in the system
+        if "hydro_budget" ∈ get_name.(get_time_series_keys(hydro))
+            println("hydro_budget time series found")
+        else
+            println("hydro_budget time series not found")
+        end
+    end
+end =#
 
 # check to make sure no units with base power of 0 are in the system
 show_components(HydroDispatch, sys, [:base_power])
@@ -425,17 +457,17 @@ end
 Storage_objects = collect(get_components(EnergyReservoirStorage, sys));
 
 # Check your work
-active_component = Storage_objects[5]
-get_name(active_component)
-get_base_power(active_component) #installed nameplate capacity (MW) 
-get_storage_capacity(active_component)    
-get_storage_level_limits(active_component)
-get_initial_storage_capacity_level(active_component)
-get_efficiency(active_component)
-get_input_active_power_limits(active_component)
-get_output_active_power_limits(active_component)
-get_rating(active_component)
-active_component.operation_cost # check operation cost
+active_object = Storage_objects[5]
+get_name(active_object)
+get_base_power(active_object) #installed nameplate capacity (MW) 
+get_storage_capacity(active_object)    
+get_storage_level_limits(active_object)
+get_initial_storage_capacity_level(active_object)
+get_efficiency(active_object)
+get_input_active_power_limits(active_object)
+get_output_active_power_limits(active_object)
+get_rating(active_object)
+active_object.operation_cost # check operation cost
 
 # check to make sure no units with base power of 0 are in the system
 show_components(EnergyReservoirStorage, sys, [:base_power])
@@ -464,19 +496,19 @@ end
 PHS_objects = collect(get_components(HydroPumpedStorage, sys));
 
 # Check your work
-active_component = PHS_objects[5]
-get_name(active_component)
-get_base_power(active_component) #installed nameplate capacity (MW) 
-get_storage_capacity(active_component)
-get_initial_storage(active_component)
-get_pump_efficiency(active_component)
-get_active_power_limits(active_component)
-get_rating(active_component)
-get_status(active_component)
-# set_status!(active_component, PSY.PumpHydroStatusModule.PumpHydroStatus.GEN)
-#set_status!(active_component, PSY.PumpHydroStatusModule.PumpHydroStatus.OFF)
-#get_status(active_component)
-active_component.operation_cost # check operation cost
+active_object = PHS_objects[5]
+get_name(active_object)
+get_base_power(active_object) #installed nameplate capacity (MW) 
+get_storage_capacity(active_object)
+get_initial_storage(active_object)
+get_pump_efficiency(active_object)
+get_active_power_limits(active_object)
+get_rating(active_object)
+get_status(active_object)
+# set_status!(active_object, PSY.PumpHydroStatusModule.PumpHydroStatus.GEN)
+#set_status!(active_object, PSY.PumpHydroStatusModule.PumpHydroStatus.OFF)
+#get_status(active_object)
+active_object.operation_cost # check operation cost
 # check to make sure no units with base power of 0 are in the system
 show_components(HydroPumpedStorage, sys, [:base_power])
 
@@ -581,12 +613,13 @@ end
 
 # Let's check our work
 active_object = Renew_D_generators[5]
+active_object = get_component(RenewableDispatch, sys, "CAISO_Solar_PGE")
 show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
 ts_size = get_time_series_keys(active_object).size
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
 
 #= # remove time series of RenewableDispatch objects from system
 for gen in Renew_D_objects # loop through the collection of RenewableDispatch objects
@@ -731,12 +764,13 @@ end
 
 # Let's check our work
 active_object = HydroDispatch_generators[1]
+active_object = get_component(HydroDispatch, sys, "CAISO_Hydro_PGE")
 show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 ts_ref = get_time_series_keys(active_object).ref
 ts_size = get_time_series_keys(active_object).size
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, active_object, "max_active_power_2001"; ignore_scaling_factors = false)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
 
 # Pumped Hydro  Generators
 ##########################
@@ -829,12 +863,12 @@ get_components(VariableReserve{ReserveDown}, sys) # retrieves an iterator of the
 
 # spot check to make sure reserve memberships were assigned
 # thermal standard
-active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
-get_services(active_component)
+active_object = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+get_services(active_object)
 
 # hydro
-active_component = get_component(HydroDispatch, sys, "CAISO_Hydro_PGE")
-get_services(active_component)
+active_object = get_component(HydroDispatch, sys, "CAISO_Hydro_PGE")
+get_services(active_object)
 
 active_service = reserveUp_services[1]
 for as_units in get_contributing_devices(sys, active_service)
@@ -1019,6 +1053,8 @@ end
 # define run_type
 run_type = "Deterministic"
 
+# define output path for simulation file
+simulation_file_path = paths[:sienna_simulation_dir]
 # determine if run_type is deterministic or monte-create
 # Define the range of weather years
 if run_type == "Deterministic"
@@ -1030,6 +1066,9 @@ else
 end 
 
 wy = weather_years #To-Do: fix this by putting it in a loop for all weather years
+
+# first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
+remove_time_series!(sys, DeterministicSingleTimeSeries)
 
 # assign our generic "requirement" timeseries for our reserveup service
 create_generic_requirement_reserveUp_timeseries(sys, wy);
@@ -1047,9 +1086,9 @@ create_generic_hydrobudget_timeseries(sys, wy, HydroDispatch_generators);
 transform_single_time_series!(sys, Hour(48), Hour(24))
 
 # check your work
-active_component = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
-show_time_series(active_component)
-ts_test = get_time_series(DeterministicSingleTimeSeries, active_component, "fuel_price")
+active_object = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+show_time_series(active_object)
+ts_test = get_time_series(DeterministicSingleTimeSeries, active_object, "fuel_price")
 horizon = get_horizon(ts_test)
 interval = get_interval(ts_test) # note this command requires the infrastructuresystems pkg
 
@@ -1075,8 +1114,9 @@ get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement"; 
 ##########################
 get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget_$wy"; ignore_scaling_factors = true)
 get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true)
-
+get_time_series_array(DeterministicSingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true)
 #assign name
+##########################
 decision_name = "deterministic_$wy"
 
 # Create an empty model reference
@@ -1175,9 +1215,14 @@ println("Simulation completed for: $decision_name")
 ###########################
 # Export the Results
 ###########################
-results_file_path = joinpath(paths[:sienna_results_dir], "results_$wy")
-simulation_file_path = paths[:sienna_simulation_dir]
-
+if run_type == "Deterministic"
+    # define output path for results file
+    results_file_path = joinpath(paths[:PSI_results_dir], "results_$wy")
+elseif run_type == "Monte_Carlo" 
+    results_file_path = joinpath(paths[:PRAS_results_dir], "results_$wy")
+else
+    @warn "Incorrect setting for run_type; $run_type is not a valid option"
+end 
 
 # check if results folder directory exists; if not, create it
 if !ispath(results_file_path)
@@ -1193,9 +1238,6 @@ else
     # do nothing
 end
 
-# export the results
-# query_write_export_results(sim, file_path, uc_decision_name)
-
 ###########################
 # Query Results
 ###########################
@@ -1207,18 +1249,31 @@ load_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParamete
 thermal_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__ThermalStandard")
 renewDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableDispatch")
 renewNonDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableNonDispatch") # Sienna doesnt store nonDispatch
-hydro_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch")
+hydro_dispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch")
+hydro_budget_parameter = read_realized_parameter(results, "EnergyBudgetTimeSeriesParameter__HydroDispatch")
+reserveUp_parameter = read_realized_parameter(results, "RequirementTimeSeriesParameter__VariableReserve__ReserveUp__CAISO_reg_up")
+reserveDown_parameter = read_realized_parameter(results, "RequirementTimeSeriesParameter__VariableReserve__ReserveDown__CAISO_reg_down")
+PHS_output_parameter = read_realized_parameter(results, "OutflowTimeSeriesParameter__HydroPumpedStorage")
+PHS_input_parameter = read_realized_parameter(results, "InflowTimeSeriesParameter__HydroPumpedStorage")
 
 # Output Realized Generation Values
 thermal_active_power = read_realized_variable(results, "ActivePowerVariable__ThermalStandard")
 renewDispatch_active_power = read_realized_variable(results, "ActivePowerVariable__RenewableDispatch")
 hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch")
-storage_charge = read_realized_variable(results, "ActivePowerInVariable__EnergyReservoirStorage")
-storage_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
+PHS_charge = read_realized_variable(results, "ActivePowerInVariable__HydroPumpedStorage")
+PHS_discharge = read_realized_variable(results, "ActivePowerOutVariable__HydroPumpedStorage")
+battery_charge = read_realized_variable(results, "ActivePowerInVariable__EnergyReservoirStorage")
+battery_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
+battery_energy = read_realized_variable(results, "EnergyVariable__EnergyReservoirStorage")
 
+#Q: are energy levels of reservoirs for PHS available?
 
 # combine all FTM generators
-gen_active_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
+gen_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
+
+# combine all FTM storage objects
+storage_discharge_power = hcat(PHS_discharge, select(battery_discharge, Not(1)))
+storage_charge_power = hcat(PHS_charge, select(battery_charge, Not(1)))
 
 # Output Realized TX flows
 AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
@@ -1237,15 +1292,20 @@ fuel_consumption_thermal = read_realized_expression(results, "FuelConsumptionExp
 # Export Results
 ###########################
 # Define output paths and write dataframes to CSV
-CSV.write(joinpath(results_file_path, "load_active_power.csv"), load_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "power_load_parameters.csv"), load_parameter); # Input time series values
 CSV.write(joinpath(results_file_path, "thermal_parameters.csv"), thermal_parameter); # Input time series values
 CSV.write(joinpath(results_file_path, "FTM_renewable_parameters.csv"), renewDispatch_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "BTM_active_power.csv"), renewNonDispatch_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "hydro_parameter.csv"), hydro_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "BTM_renewable_parameters.csv"), renewNonDispatch_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "hydro_parameter.csv"), hydro_dispatch_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "hydro_budget_parameter.csv"), hydro_budget_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "reserveUp_parameter.csv"), reserveUp_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "reserveDown_parameter.csv"), reserveDown_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "PHS_output_parameter.csv"), PHS_output_parameter); # Input time series values
+CSV.write(joinpath(results_file_path, "PHS_input_parameter.csv"), PHS_input_parameter); # Input time series values
 
-CSV.write(joinpath(results_file_path, "FTM_generator_active_power.csv"), gen_active_power);
-CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge);
-CSV.write(joinpath(results_file_path, "storage_discharge.csv"), storage_discharge);
+CSV.write(joinpath(results_file_path, "FTM_generator_power.csv"), gen_power);
+CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge_power);
+CSV.write(joinpath(results_file_path, "storage_discharge.csv"), storage_discharge_power);
 CSV.write(joinpath(results_file_path, "AreaInterchange_flow.csv"), AreaInterchange_flow);
 CSV.write(joinpath(results_file_path, "power_balance.csv"), power_balance);
 CSV.write(joinpath(results_file_path, "production_costs.csv"), pc_all);   

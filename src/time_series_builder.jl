@@ -514,7 +514,7 @@ end
 
 function create_generic_requirement_reserveUp_timeseries(sys::System, WY::Int64)
     # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
-    remove_time_series!(sys, DeterministicSingleTimeSeries)
+    #remove_time_series!(sys, DeterministicSingleTimeSeries)
     
     # Get the reserve up service
     reserve_up = get_component(VariableReserve{ReserveUp}, sys, "CAISO_reg_up")
@@ -544,7 +544,7 @@ end
 
 function create_generic_requirement_reserveDown_timeseries(sys::System, WY::Int64)
     # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
-    remove_time_series!(sys, DeterministicSingleTimeSeries)
+    #remove_time_series!(sys, DeterministicSingleTimeSeries)
     
     # Get the reserve down service
     reserve_down = get_component(VariableReserve{ReserveDown}, sys, "CAISO_reg_down")
@@ -574,7 +574,7 @@ end
 
 function create_generic_hydrobudget_timeseries(sys::System, WY::Int64, hydro_collection::Vector{HydroDispatch})
     # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
-    remove_time_series!(sys, DeterministicSingleTimeSeries)
+    #remove_time_series!(sys, DeterministicSingleTimeSeries)
 
     # Loop through each hydro unit
     for hydro in hydro_collection

@@ -47,10 +47,15 @@ end
 
 function define_hydro_model(template_uc, WY)
     # Define Hydro model
-    hydro_model = DeviceModel(HydroDispatch,HydroDispatchRunOfRiverBudget; #HydroDispatchRunOfRiver
-        time_series_names = Dict{Any, String}(
+    hydro_model = DeviceModel(HydroDispatch,HydroDispatchRunOfRiverBudget; 
+        time_series_names =Dict{Any, String}(
             PowerSimulations.ActivePowerTimeSeriesParameter => "max_active_power_$WY",
-            HydroPowerSimulations.EnergyBudgetTimeSeriesParameter => "hydro_budget"))
+            HydroPowerSimulations.EnergyBudgetTimeSeriesParameter => "hydro_budget",
+            ),    
+        attributes =  Dict{String, Any}(
+            "hydro_budget_interval" => nothing,# we need to define the interval over which budget applies to
+            ), 
+    ) # close out the DeviceModel
     
     # assign the hydro model to the template_uc
     PowerSimulations.set_device_model!(template_uc, hydro_model)

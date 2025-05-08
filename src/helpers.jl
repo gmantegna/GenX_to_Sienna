@@ -14,14 +14,21 @@ function initialize_paths_and_inputs()
 
     # Define key directories
     data_dir = joinpath(root_dir, "Sonoma", "GENX_Output") # GenX input files
-    sienna_results_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","output_results") # sienna processed results 
+    PSI_results_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","output_results","PowerSimulations") # PSI processed results
+    PRAS_results_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","output_results","PRAS") # PRAS processed results
     sienna_simulation_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","simulation_files") # Sienna simulation results
     
-    # Ensure output directory exists
-    if !ispath(sienna_results_dir)
-        mkpath(sienna_results_dir)
+    # Ensure PSI output directory exists
+    if !ispath(PSI_results_dir)
+        mkpath(PSI_results_dir)
     end
 
+    # Ensure PRAS output directory exists
+    if !ispath(PRAS_results_dir)
+        mkpath(PRAS_results_dir)
+    end
+
+    # Ensure Sienna simulation directory exists
     if !ispath(sienna_simulation_dir)
         mkpath(sienna_simulation_dir)
     end
@@ -30,7 +37,8 @@ function initialize_paths_and_inputs()
     return Dict(
         :root_dir => root_dir,
         :data_dir => data_dir,
-        :sienna_results_dir => sienna_results_dir,
+        :PSI_results_dir => PSI_results_dir,
+        :PRAS_results_dir => PRAS_results_dir,
         :sienna_simulation_dir => sienna_simulation_dir
     )
 end
