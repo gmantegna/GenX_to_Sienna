@@ -53,7 +53,7 @@ function define_hydro_model(template_uc, WY)
             HydroPowerSimulations.EnergyBudgetTimeSeriesParameter => "hydro_budget",
             ),    
         attributes =  Dict{String, Any}(
-            "hydro_budget_interval" => nothing,# we need to define the interval over which budget applies to
+            "hydro_budget_interval" => Hour(24),# original approach for daily budget errored out on model initialize
             ), 
     ) # close out the DeviceModel
     

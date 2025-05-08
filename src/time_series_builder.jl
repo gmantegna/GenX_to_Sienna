@@ -572,7 +572,7 @@ function create_generic_requirement_reserveDown_timeseries(sys::System, WY::Int6
     add_time_series!(sys, reserve_down, new_ts)    
 end
 
-function create_generic_hydrobudget_timeseries(sys::System, WY::Int64, hydro_collection::Vector{HydroDispatch})
+function create_generic_daily_hydrobudget_timeseries(sys::System, WY::Int64, hydro_collection::Vector{HydroDispatch})
     # first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
     #remove_time_series!(sys, DeterministicSingleTimeSeries)
 

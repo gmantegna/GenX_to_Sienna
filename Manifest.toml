@@ -439,7 +439,7 @@ version = "2.12.0+0"
 
 [[deps.HydroPowerSimulations]]
 deps = ["Dates", "InfrastructureSystems", "JuMP", "PowerSimulations", "PowerSystems"]
-git-tree-sha1 = "7c797cf9ac658d0952edbd0d079f8a4be3663602"
+git-tree-sha1 = "58b496fe1a886e0af6cc6be2a798ebb075cc5db1"
 repo-rev = "rh/add_budget_for_dispatch"
 repo-url = "https://github.com/NREL-Sienna/HydroPowerSimulations.jl.git"
 uuid = "fc1677e0-6ad7-4515-bf3a-bd6bf20a0b1b"
@@ -540,9 +540,9 @@ version = "1.25.0"
 
 [[deps.JuliaInterpreter]]
 deps = ["CodeTracking", "InteractiveUtils", "Random", "UUIDs"]
-git-tree-sha1 = "ad08bbc177bc329888d21a94b37beb6aa919273a"
+git-tree-sha1 = "6ac9e4acc417a5b534ace12690bc6973c25b862f"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
-version = "0.10.2"
+version = "0.10.3"
 
 [[deps.KLU]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse_jll"]

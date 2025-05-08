@@ -408,7 +408,7 @@ end
 HydroDispatch_generators = collect(get_components(HydroDispatch, sys))
 
 # Check your work
-active_object = HydroDispatch_generators[3]
+active_object = HydroDispatch_generators[1]
 
 get_name(active_object)
 get_base_power(active_object) #installed nameplate capacity (MW)   
@@ -1076,8 +1076,8 @@ create_generic_requirement_reserveUp_timeseries(sys, wy);
 # assign our generic "requirement" timeseries for our reservedown service
 create_generic_requirement_reserveDown_timeseries(sys, wy);
 
-# assign our generic "hydro_budget" timeseries for our hydro units
-create_generic_hydrobudget_timeseries(sys, wy, HydroDispatch_generators);
+# assign our daily generic "hydro_budget" timeseries for our hydro units
+create_generic_daily_hydrobudget_timeseries(sys, wy, HydroDispatch_generators);
 
 #################################
 # create timeseries fxs 
@@ -1113,8 +1113,9 @@ get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement"; 
 # hydro budget
 ##########################
 get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget_$wy"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true)
+get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true) # this should be 1/2 the values from hydro_budget_$wy
 get_time_series_array(DeterministicSingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true)
+
 #assign name
 ##########################
 decision_name = "deterministic_$wy"
@@ -1175,7 +1176,7 @@ UC_decision = DecisionModel(
     name = decision_name,
     optimizer = optimizer_with_attributes(Gurobi.Optimizer, "MIPGap" => 1e-2),
     system_to_file = false, # write the json and hf files
-    initialize_model = true, 
+    initialize_model = true, # this is initial subroutine that runs to help the solver with the first timestep
     optimizer_solve_log_print = true, #solver output
     direct_mode_optimizer = true, # performance thing; default is true; set it false if you have specific need
     rebuild_model = false, # never have to use this, R&D thing
@@ -1205,6 +1206,9 @@ sim = Simulation(
 
 # Build the simulation folder
 build!(sim; console_level = Logging.Info,) # this will give us a "built" build status; run status still "initialized"
+
+#troubleshooting
+#to_json(sys, "testSys.json")
 
 # Execute the simulation
 execute!(sim, enable_progress_bar = true) # run status will now be "successfully_finalized" if successful
