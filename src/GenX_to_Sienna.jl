@@ -481,6 +481,7 @@ end =#
 file_path = joinpath(paths[:data_dir], "storage_parameters.csv");
 create_storage_parameters_df(Storage_objects, file_path);
 
+
 # Pumped Hydro Storage Resources 
 ##########################
 
@@ -1055,107 +1056,42 @@ run_type = "Deterministic"
 
 # define output path for simulation file
 simulation_file_path = paths[:sienna_simulation_dir]
-# determine if run_type is deterministic or monte-create
-# Define the range of weather years
+
+# Define the range of weather years based on run type
 if run_type == "Deterministic"
-    weather_years = 1998;
+    weather_years = [1998]  # Single year for deterministic
+    sim_file_path = joinpath(paths[:sienna_simulation_dir], "deterministic")
 elseif run_type == "Monte_Carlo" 
-    weather_years = 1999:1999; # testing  only a few yrs to ensure proper configuration across weather years
+    weather_years = 2000:2001  # Range of years for Monte Carlo
+    sim_file_path = joinpath(paths[:sienna_simulation_dir], "stochastic")
 else
     @warn "Incorrect setting for run_type; $run_type is not a valid option"
-end 
+    return
+end
 
-wy = weather_years #To-Do: fix this by putting it in a loop for all weather years
+# Delete directory if it exists and create a fresh one
+if ispath(sim_file_path)
+    rm(sim_file_path, recursive=true, force=true)
+end
+mkpath(sim_file_path)
 
-# first we need to remove all forecasts (i.e. DeterministicSingleTimeSeries) from the system
-remove_time_series!(sys, DeterministicSingleTimeSeries)
-
-# assign our generic "requirement" timeseries for our reserveup service
-create_generic_requirement_reserveUp_timeseries(sys, wy);
-
-# assign our generic "requirement" timeseries for our reservedown service
-create_generic_requirement_reserveDown_timeseries(sys, wy);
-
-# assign our daily generic "hydro_budget" timeseries for our hydro units
-create_generic_daily_hydrobudget_timeseries(sys, wy, HydroDispatch_generators);
-
-#################################
-# create timeseries fxs 
-#################################
-# create DeterministicSingleTimeSeries objects (48-hr horizon & 24-hr lookahead; i.e. 24 hour "realized intervals") 
-transform_single_time_series!(sys, Hour(48), Hour(24))
-
-# check your work
-active_object = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
-show_time_series(active_object)
-ts_test = get_time_series(DeterministicSingleTimeSeries, active_object, "fuel_price")
-horizon = get_horizon(ts_test)
-interval = get_interval(ts_test) # note this command requires the infrastructuresystems pkg
-
-
-# check to make sure it worked
-#reserve up
-##########################
-show_time_series(reserveUp_services[1])
-# original requirement
-get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement_up_$wy"; ignore_scaling_factors = true)
-# new requirement (these should match)
-get_time_series_array(SingleTimeSeries, reserveUp_services[1], "requirement"; ignore_scaling_factors = true)
-
-#reserve down
-##########################
-show_time_series(reserveDown_services[1])
-# original requirement
-get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement_down_$wy"; ignore_scaling_factors = true)
-# new requirement (these should match)
-get_time_series_array(SingleTimeSeries, reserveDown_services[1], "requirement"; ignore_scaling_factors = true)
-
-# hydro budget
-##########################
-get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget_$wy"; ignore_scaling_factors = true)
-get_time_series_array(SingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true) # this should be 1/2 the values from hydro_budget_$wy
-get_time_series_array(DeterministicSingleTimeSeries, HydroDispatch_generators[1], "hydro_budget"; ignore_scaling_factors = true)
-
-#assign name
-##########################
-decision_name = "deterministic_$wy"
+# Initialize dictionary to store simulation results
+sim_results_dict = Dict{String, SimulationResults}()
 
 # Create an empty model reference
-##########################
 template_uc = ProblemTemplate()
 
 # Define non-weather related Device Models
-##########################
-# storage
+###########################
+# Storage
 define_storage_model(template_uc)
+
 # PHS
 define_PHS_model(template_uc)
-
-# Define weather-dependent Device Models
-##########################
-# load
-define_load_model(template_uc, wy)
-# thermal
-define_thermal_model(template_uc, wy)
-# hydro
-define_hydro_model(template_uc, wy)
-# renewable dispatch
-define_renewable_dispatch_model(template_uc, wy)
-# renewable non-dispatch
-define_renewable_non_dispatch_model(template_uc, wy)
 
 # Define branch model
 ###########################
 define_branch_model(template_uc)
-
-# define the service models
-###########################
-#define_RegUp_service_model(template_uc) # remember: we already updated our timeseries for the active WY
-#define_RegDown_service_model(template_uc)
-
-
-# Q: What is a GroupReserve?
-# Q: what is an Aggregated Model?
 
 # Define network model
 ###########################
@@ -1165,196 +1101,197 @@ define_branch_model(template_uc)
 # AreaInterchange
 define_AreaNetwork_model(template_uc)
 
+# Loop through each weather year
+for wy in weather_years
 
-#################################
-# Define Simulation Model in PSI 
-#################################
-# initialize our decision model
-UC_decision = DecisionModel(
-    template_uc,
-    sys;
-    name = decision_name,
-    optimizer = optimizer_with_attributes(Gurobi.Optimizer, "MIPGap" => 1e-2),
-    system_to_file = false, # write the json and hf files
-    initialize_model = true, # this is initial subroutine that runs to help the solver with the first timestep
-    optimizer_solve_log_print = true, #solver output
-    direct_mode_optimizer = true, # performance thing; default is true; set it false if you have specific need
-    rebuild_model = false, # never have to use this, R&D thing
-    store_variable_names = true,
-    calculate_conflict = true, #infeasibility (gurobi only)
-    export_optimization_model = false, # this exports the LP (location is...)
-)
+    # Remove all forecasts from the system
+    remove_time_series!(sys, DeterministicSingleTimeSeries)
+    
+    # assign our generic "requirement" timeseries for our reserves 
+    create_generic_requirement_reserveUp_timeseries(sys, wy);
+    create_generic_requirement_reserveDown_timeseries(sys, wy);
 
-# Initialize Simulation Model(s)
-sim_model = SimulationModels(
-    decision_models = [UC_decision],
-)
+    # assign our daily generic "hydro_budget" timeseries for our hydro units
+    create_generic_daily_hydrobudget_timeseries(sys, wy, HydroDispatch_generators)
 
-# Initialize Simulation Sequence
-sim_sequence = SimulationSequence(
-    models = sim_model,
-)
+    # now let's create our timeseries forecasts
+    transform_single_time_series!(sys, Hour(48), Hour(24))
 
-# Define the simulation
-sim = Simulation(
-    name = "test-sim",
-    steps = 364,  # Steps in your simulation
-    models = sim_model,
-    sequence = sim_sequence,
-    simulation_folder = mktempdir(paths[:sienna_simulation_dir], cleanup = true),
-)
+#=     # Verify timeseries setup
+    active_object = get_component(ThermalStandard, sys, "CAISO_CCGT1_PGE")
+    ts_test = get_time_series(DeterministicSingleTimeSeries, active_object, "fuel_price")
+    horizon = get_horizon(ts_test)
+    interval = get_interval(ts_test) =#
 
-# Build the simulation folder
-build!(sim; console_level = Logging.Info,) # this will give us a "built" build status; run status still "initialized"
+    # Define weather-dependent Device Models
+    define_load_model(template_uc, wy)
+    define_thermal_model(template_uc, wy)
+    define_hydro_model(template_uc, wy)
+    define_renewable_dispatch_model(template_uc, wy)
+    define_renewable_non_dispatch_model(template_uc, wy)
 
-#troubleshooting
-#to_json(sys, "testSys.json")
+    # define the service models
+    ###########################
+    #define_RegUp_service_model(template_uc) # remember: we already updated our timeseries for the active WY
+    #define_RegDown_service_model(template_uc)
 
-# Execute the simulation
-execute!(sim, enable_progress_bar = true) # run status will now be "successfully_finalized" if successful
+    # Assign simulation name
+    decision_name = "$(lowercase(run_type))_$wy"
 
-# Print a message to indicate that the simulation is complete
-println("Simulation completed for: $decision_name")
+    # Initialize decision model
+    UC_decision = DecisionModel(
+        template_uc,
+        sys;
+        name = decision_name,
+        optimizer = optimizer_with_attributes(Gurobi.Optimizer, "MIPGap" => 1e-2),
+        system_to_file = false,
+        initialize_model = true,
+        optimizer_solve_log_print = true,
+        direct_mode_optimizer = true,
+        rebuild_model = false,
+        store_variable_names = true,
+        calculate_conflict = true,
+        export_optimization_model = false,
+    )
+
+    # Initialize Simulation Model(s)
+    sim_model = SimulationModels(
+        decision_models = [UC_decision],
+    )
+
+    # Initialize Simulation Sequence
+    sim_sequence = SimulationSequence(
+        models = sim_model,
+    )
+
+    # Define the simulation
+    sim = Simulation(
+        name = "sim_$wy",
+        steps = 3,  # Steps in your simulation
+        models = sim_model,
+        sequence = sim_sequence,
+        simulation_folder = sim_file_path,
+    )
+
+    # simulation_folder = mktempdir(paths[:sienna_simulation_dir], cleanup = true),
+
+    # Build and execute simulation
+    build!(sim; console_level = Logging.Info)
+    execute!(sim, enable_progress_bar = true)
+
+    # Store simulation results in dictionary
+    sim_results = SimulationResults(sim)
+    sim_results_dict[decision_name] = sim_results
+
+    # Print completion message
+    println("Simulation completed for: $decision_name")
+end
 
 ###########################
 # Export the Results
 ###########################
-if run_type == "Deterministic"
-    # define output path for results file
-    results_file_path = joinpath(paths[:PSI_results_dir], "results_$wy")
-elseif run_type == "Monte_Carlo" 
-    results_file_path = joinpath(paths[:PRAS_results_dir], "results_$wy")
-else
-    @warn "Incorrect setting for run_type; $run_type is not a valid option"
-end 
+# Separate loop for processing and exporting results
+for (decision_name, sim_results) in sim_results_dict
+    println("\nProcessing results for: $decision_name")
 
-# check if results folder directory exists; if not, create it
-if !ispath(results_file_path)
-    mkpath(results_file_path)
-else
-    # do nothing
+    #retrieve the weather year from the decision name
+    wy = parse(Int, decision_name[end-3:end])
+
+    #define the results file path based on the run type
+    if run_type == "Deterministic"
+        # define output path for results file
+        results_file_path = joinpath(paths[:PSI_results_dir], "results_$wy")
+    elseif run_type == "Monte_Carlo" 
+        results_file_path = joinpath(paths[:PRAS_results_dir], "results_$wy")
+    else
+        @warn "Incorrect setting for run_type; $run_type is not a valid option"
+    end
+    
+    # Check if the results directory exists, if not create it
+    if !ispath(results_file_path)
+        mkpath(results_file_path)
+    end
+    
+    # Get results for this weather year
+    results = get_decision_problem_results(sim_results, decision_name)
+    
+    # Input TimeSeries Parameters
+    load_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__PowerLoad")
+    thermal_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__ThermalStandard")
+    renewDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableDispatch")
+    renewNonDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableNonDispatch")
+    hydro_dispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch")
+    hydro_budget_parameter = read_realized_parameter(results, "EnergyBudgetTimeSeriesParameter__HydroDispatch")
+    PHS_output_parameter = read_realized_parameter(results, "OutflowTimeSeriesParameter__HydroPumpedStorage")
+    PHS_input_parameter = read_realized_parameter(results, "InflowTimeSeriesParameter__HydroPumpedStorage")
+
+    # Realized Variables
+    thermal_active_power = read_realized_variable(results, "ActivePowerVariable__ThermalStandard")
+    renewDispatch_active_power = read_realized_variable(results, "ActivePowerVariable__RenewableDispatch")
+    battery_charge = read_realized_variable(results, "ActivePowerInVariable__EnergyReservoirStorage")
+    battery_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
+    battery_energy = read_realized_variable(results, "EnergyVariable__EnergyReservoirStorage")
+    hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch")
+    PHS_charge = read_realized_variable(results, "ActivePowerInVariable__HydroPumpedStorage")
+    PHS_discharge = read_realized_variable(results, "ActivePowerOutVariable__HydroPumpedStorage")
+    PHS_spillage = read_realized_variable(results, "WaterSpillageVariable__HydroPumpedStorage")
+    PHS_UpperReservoir = read_realized_variable(results, "HydroEnergyVariableUp__HydroPumpedStorage")
+    PHS_LowerReservoir = read_realized_variable(results, "HydroEnergyVariableDown__HydroPumpedStorage")
+    PHS_reservation = read_realized_variable(results, "ReservationVariable__HydroPumpedStorage")
+
+    # Combine results
+    gen_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
+    storage_discharge_power = hcat(PHS_discharge, select(battery_discharge, Not(1)))
+    storage_charge_power = hcat(PHS_charge, select(battery_charge, Not(1)))
+    AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
+    power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
+
+    # Production Costs
+    pc_thermal = read_realized_expression(results, "ProductionCostExpression__ThermalStandard")
+    pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch")
+    pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch")
+    pc_PHS = read_realized_expression(results, "ProductionCostExpression__HydroPumpedStorage")
+    pc_all = hcat(pc_thermal, select(pc_renewable, Not(1)), select(pc_hydro, Not(1)), select(pc_PHS, Not(1)))
+    fuel_consumption_thermal = read_realized_expression(results, "FuelConsumptionExpression__ThermalStandard")
+
+    # Auxiliary variables
+    Energy_PHS = read_realized_variable(results, "HydroEnergyOutput__HydroPumpedStorage")
+    Energy_Hydro = read_realized_variable(results, "HydroEnergyOutput__HydroDispatch")
+    Energy_Battery = read_realized_variable(results, "StorageEnergyOutput__EnergyReservoirStorage")
+
+    println("Exporting results to CSV files...")
+
+    # Export results to CSV files
+    CSV.write(joinpath(results_file_path, "power_load_parameters.csv"), load_parameter)
+    CSV.write(joinpath(results_file_path, "thermal_parameters.csv"), thermal_parameter)
+    CSV.write(joinpath(results_file_path, "FTM_renewable_parameters.csv"), renewDispatch_parameter)
+    CSV.write(joinpath(results_file_path, "BTM_renewable_parameters.csv"), renewNonDispatch_parameter)
+    CSV.write(joinpath(results_file_path, "hydro_parameter.csv"), hydro_dispatch_parameter)
+    CSV.write(joinpath(results_file_path, "hydro_budget_parameter.csv"), hydro_budget_parameter)
+    CSV.write(joinpath(results_file_path, "PHS_output_parameter.csv"), PHS_output_parameter)
+    CSV.write(joinpath(results_file_path, "PHS_input_parameter.csv"), PHS_input_parameter)
+
+    CSV.write(joinpath(results_file_path, "FTM_generator_power.csv"), gen_power)
+    CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge_power)
+    CSV.write(joinpath(results_file_path, "storage_discharge.csv"), storage_discharge_power)
+    CSV.write(joinpath(results_file_path, "AreaInterchange_flow.csv"), AreaInterchange_flow)
+    CSV.write(joinpath(results_file_path, "power_balance.csv"), power_balance)
+    CSV.write(joinpath(results_file_path, "production_costs.csv"), pc_all)
+    CSV.write(joinpath(results_file_path, "fuel_consumption_thermal.csv"), fuel_consumption_thermal)
+
+    # PHS Specific
+    CSV.write(joinpath(results_file_path, "PHS_UpperReservoir.csv"), PHS_UpperReservoir)
+    CSV.write(joinpath(results_file_path, "PHS_LowerReservoir.csv"), PHS_LowerReservoir)
+    CSV.write(joinpath(results_file_path, "PHS_spillage.csv"), PHS_spillage)
+    CSV.write(joinpath(results_file_path, "PHS_reservation.csv"), PHS_reservation)
+    CSV.write(joinpath(results_file_path, "Energy_PHS.csv"), Energy_PHS)
+
+    # Hydro Specific
+    CSV.write(joinpath(results_file_path, "Energy_Hydro.csv"), Energy_Hydro)
+
+    # Battery Storage Specific
+    CSV.write(joinpath(results_file_path, "Energy_Battery.csv"), Energy_Battery)
+
 end
-
-# check if simulation folder directory exists; if not, create it
-if !ispath(simulation_file_path)
-    mkpath(simulation_file_path)
-else
-    # do nothing
-end
-
-###########################
-# Query Results
-###########################
-sim_results = SimulationResults(sim)
-results = get_decision_problem_results(sim_results, decision_name)
-
-# retrieve a list of auxiliary variables
-###########################
-#keys(read_aux_variables(results))
-keys(read_realized_aux_variables(results))
-
-# retrieve a list of parameters
-###########################
-#keys(read_parameters(results))
-keys(read_realized_parameters(results))
-
-# retrieve a list of variables
-###########################
-#read_variables(results) #gives entries for the horizon
-keys(read_realized_variables(results)) # gives entries for the entire simulation
-
-# retrieve a list of expressions
-###########################
-keys(read_expressions(results))
-
-# Input TimeSeries Parameters
-load_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__PowerLoad");
-thermal_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__ThermalStandard");
-renewDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableDispatch");
-renewNonDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableNonDispatch"); # Sienna doesnt store nonDispatch
-hydro_dispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch");
-hydro_budget_parameter = read_realized_parameter(results, "EnergyBudgetTimeSeriesParameter__HydroDispatch");
-#reserveUp_parameter = read_realized_parameter(results, "RequirementTimeSeriesParameter__VariableReserve__ReserveUp__CAISO_reg_up");
-#reserveDown_parameter = read_realized_parameter(results, "RequirementTimeSeriesParameter__VariableReserve__ReserveDown__CAISO_reg_down");
-PHS_output_parameter = read_realized_parameter(results, "OutflowTimeSeriesParameter__HydroPumpedStorage");
-PHS_input_parameter = read_realized_parameter(results, "InflowTimeSeriesParameter__HydroPumpedStorage");
-
-# Realized Variabes
-thermal_active_power = read_realized_variable(results, "ActivePowerVariable__ThermalStandard");
-renewDispatch_active_power = read_realized_variable(results, "ActivePowerVariable__RenewableDispatch");
-battery_charge = read_realized_variable(results, "ActivePowerInVariable__EnergyReservoirStorage");
-battery_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage");
-battery_energy = read_realized_variable(results, "EnergyVariable__EnergyReservoirStorage");
-hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch");
-PHS_charge = read_realized_variable(results, "ActivePowerInVariable__HydroPumpedStorage");
-PHS_discharge = read_realized_variable(results, "ActivePowerOutVariable__HydroPumpedStorage");
-PHS_spillage = read_realized_variable(results, "WaterSpillageVariable__HydroPumpedStorage");
-PHS_UpperReservoir = read_realized_variable(results, "HydroEnergyVariableUp__HydroPumpedStorage"); #upper reservoir level
-PHS_LowerReservoir = read_realized_variable(results, "HydroEnergyVariableDown__HydroPumpedStorage"); #lower reservoir level
-
-# Reservation _Variables 
-PHS_reservation = read_realized_variable(results, "ReservationVariable__HydroPumpedStorage");
-
-# combine all FTM generators
-gen_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
-
-# combine all FTM storage objects
-storage_discharge_power = hcat(PHS_discharge, select(battery_discharge, Not(1)))
-storage_charge_power = hcat(PHS_charge, select(battery_charge, Not(1)))
-
-# Output Realized TX flows
-AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
-
-# Output Expressions
-power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
-
-# Get Production Costs
-pc_thermal = read_realized_expression(results, "ProductionCostExpression__ThermalStandard");
-pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch");
-pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch");
-pc_PHS = read_realized_expression(results, "ProductionCostExpression__HydroPumpedStorage");
-pc_all = hcat(pc_thermal,select(pc_renewable, Not(1)), select(pc_hydro, Not(1)),select(pc_PHS, Not(1)));
-fuel_consumption_thermal = read_realized_expression(results, "FuelConsumptionExpression__ThermalStandard")
-
-# Auxiliary variables
-Energy_PHS = read_realized_variable(results, "HydroEnergyOutput__HydroPumpedStorage");
-Energy_Hydro = read_realized_variable(results, "HydroEnergyOutput__HydroDispatch");
-Energy_Battery = read_realized_variable(results, "StorageEnergyOutput__EnergyReservoirStorage");
-
-###########################
-# Export Results
-###########################
-# Define output paths and write dataframes to CSV
-CSV.write(joinpath(results_file_path, "power_load_parameters.csv"), load_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "thermal_parameters.csv"), thermal_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "FTM_renewable_parameters.csv"), renewDispatch_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "BTM_renewable_parameters.csv"), renewNonDispatch_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "hydro_parameter.csv"), hydro_dispatch_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "hydro_budget_parameter.csv"), hydro_budget_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "PHS_output_parameter.csv"), PHS_output_parameter); # Input time series values
-CSV.write(joinpath(results_file_path, "PHS_input_parameter.csv"), PHS_input_parameter); # Input time series values
-#CSV.write(joinpath(results_file_path, "reserveUp_parameter.csv"), reserveUp_parameter); # Input time series values
-#CSV.write(joinpath(results_file_path, "reserveDown_parameter.csv"), reserveDown_parameter); # Input time series values
-
-CSV.write(joinpath(results_file_path, "FTM_generator_power.csv"), gen_power);
-CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge_power);
-CSV.write(joinpath(results_file_path, "storage_discharge.csv"), storage_discharge_power);
-CSV.write(joinpath(results_file_path, "AreaInterchange_flow.csv"), AreaInterchange_flow);
-CSV.write(joinpath(results_file_path, "power_balance.csv"), power_balance);
-CSV.write(joinpath(results_file_path, "production_costs.csv"), pc_all);   
-CSV.write(joinpath(results_file_path, "fuel_consumption_thermal.csv"), fuel_consumption_thermal);
-
-# PHS Specific 
-CSV.write(joinpath(results_file_path, "PHS_UpperReservoir.csv"), PHS_UpperReservoir);
-CSV.write(joinpath(results_file_path, "PHS_LowerReservoir.csv"), PHS_LowerReservoir);
-CSV.write(joinpath(results_file_path, "PHS_spillage.csv"), PHS_spillage);
-CSV.write(joinpath(results_file_path, "PHS_reservation.csv"), PHS_reservation);
-CSV.write(joinpath(results_file_path, "Energy_PHS.csv"), Energy_PHS);
-
-# Hydro Specific 
-CSV.write(joinpath(results_file_path, "Energy_Hydro.csv"), Energy_Hydro);
-
-#Battery Storage Specific 
-CSV.write(joinpath(results_file_path, "Energy_Battery.csv"), Energy_Battery);    
 
 end # module

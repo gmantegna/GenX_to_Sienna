@@ -225,8 +225,7 @@ function create_storage_parameters_df(Storage_objects::Vector{EnergyReservoirSto
 
     # Write the DataFrame to a CSV file
     CSV.write(output_path, df_storage)
-    
-    return df_storage
+
 end
 
 function create_area_interchange_parameters_df(area_interchanges::Vector{AreaInterchange}, output_path::String)
