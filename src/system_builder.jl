@@ -793,11 +793,12 @@ function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::Dat
         )
 
         # define storage efficiency
-        charge_efficiency = round(storage_df[i, :Eff_Up], digits=3)
+        charge_efficiency = round(storage_df[i, :Eff_Up], digits=3) #note: currently  applied for both charge and discharge
         # discharge_efficiency = round(storage_df[i, :Eff_Down], digits=3) #not used in PSY's PHS formulation 
+        PHS_efficiency = round(sqrt(charge_efficiency), digits=3) # half this to get proper roundtrip efficiency
 
         # calculate duration in hours
-        duration_hours = round(energy_capacity_mwh/power_capacity_mw, digits=3)
+        duration_hours = round(energy_capacity_mwh/(power_capacity_mw*PHS_efficiency), digits=3)
         # calculate initial storage (50% of reservoir)
         initial_storage_hours = round(duration_hours * 0.5, digits=3)
 
@@ -824,9 +825,9 @@ function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::Dat
             inflow = 0.0, # mandatory object; we will assign later
             outflow = 0.0, # mandatory object; we will assign later
             initial_storage = (up = initial_storage_hours, down = initial_storage_hours*2), # initial storage level; units: hours
-            storage_target = (up = 0.5, down = 0.5), # no storage target
+            storage_target = (up = 0.5, down = 0.5), # Storage target of UPPER res @ end of simulation (ratio of storage capacity)
             operation_cost = Op_Cost,
-            pump_efficiency = charge_efficiency, # pumping efficiency
+            pump_efficiency = PHS_efficiency, # roundtrip efficiency
             conversion_factor = 1.0, # Conversion factor from flow to energy p.u.-hr
             status = PSY.PumpHydroStatusModule.PumpHydroStatus.OFF, # initial status; default: "PumpHydroStatus.OFF"
             time_at_status = 10.0, # initial time at status
