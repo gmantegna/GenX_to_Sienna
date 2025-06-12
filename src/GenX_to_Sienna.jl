@@ -1052,7 +1052,7 @@ end
 # Define PowerSimulations.jl (PSI) template and model 
 ##########################
 # define run_type
-run_type = "Deterministic"
+run_type = "Monte_Carlo"
 
 # define output path for simulation file
 simulation_file_path = paths[:sienna_simulation_dir]
