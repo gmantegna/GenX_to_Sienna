@@ -2,7 +2,7 @@ module GenX_to_Sienna_FPA
 
 using PowerSystems
 using PowerSimulations
-using PowerAnalytics
+# using PowerAnalytics # not PSY5 version available
 using Gurobi
 using CSV
 using DataFrames
@@ -31,7 +31,7 @@ paths = initialize_paths_and_inputs()
 # define constants 
 const PSY = PowerSystems
 const PSI = PowerSimulations
-#const SPI = SiennaPRASInterface
+#const SPI = SiennaPRASInterface (not available in PSY5)
 
 # Define logger
 logger = configure_logging(console_level=Logging.Info);
@@ -78,7 +78,7 @@ buses = collect(get_components(ACBus, sys))
 get_components(ACBus, sys)
 show_components(ACBus, sys)
 active_object = get_component(ACBus, sys, "BANC")
-get_number(active_object)
+get_number(active_object) # retrieve bus number
 
 # Areas
 ##########################
@@ -126,7 +126,7 @@ else
     candidate_lines_mapping_df = nothing
 end
 
-# define PSY line  objects
+# define PSY line objects
 lines_dict = create_lines(existing_lines_mapping_df, candidate_lines_mapping_df, sys)
 
 # add lines to system (note: arc count should be equal to line count)
@@ -182,6 +182,7 @@ file_path = joinpath(paths[:data_dir], "area_interchange_parameters.csv")
 create_area_interchange_parameters_df(area_interchanges, file_path)
 
 # Transmission Interfaces
+#(note: TX interfaces can only be assigned to lines; NREL working on a "TOT" to enable an interface to an AI)
 ##########################
 # read interface data
 interface_df = CSV.read(joinpath(paths[:data_dir], "system", "Simultaneous_Flow_Constraints.csv"), DataFrame)
@@ -454,7 +455,8 @@ for (storage_name, storage_object) in Storage_dict
 end
 
 # define collection of storage generators
-Storage_objects = collect(get_components(EnergyReservoirStorage, sys));
+Storage_objects = collect(get_components(x -> get_prime_mover_type(x) != PrimeMovers.PS,EnergyReservoirStorage, sys));
+
 
 # Check your work
 active_object = Storage_objects[5]
@@ -486,19 +488,38 @@ create_storage_parameters_df(Storage_objects, file_path);
 ##########################
 
 # define storage generator objects
-PumpedHydro_dict = create_PHS_objects(sys, storage_df, capacity_df, PM_type_dict, zone_dict)   
+PumpedHydro_dict = create_PHS_storage_objects(sys, storage_df, capacity_df, PM_type_dict, storage_type_dict, zone_dict)
+#PumpedHydro_dict = create_PHS_objects(sys, storage_df, capacity_df, PM_type_dict, zone_dict)   
 
 # add storage generators to system
 for (PHS_name, PHS_object) in PumpedHydro_dict
     add_component!(sys, PHS_object)
 end
 
-# define collection of storage generators
-PHS_objects = collect(get_components(HydroPumpedStorage, sys));
+# define collection of storage generators (filtered for pumped hydro only)
+PHS_objects = collect(get_components(x -> get_prime_mover_type(x) == PrimeMovers.PS,EnergyReservoirStorage, sys));
+#HS_objects = collect(get_components(HydroPumpedStorage, sys));
 
 # Check your work
-active_object = PHS_objects[5]
+active_object = PHS_objects[1]
 get_name(active_object)
+get_base_power(active_object) #installed nameplate capacity (MW) 
+get_storage_capacity(active_object)    
+get_storage_level_limits(active_object)
+get_initial_storage_capacity_level(active_object)
+get_efficiency(active_object)
+get_input_active_power_limits(active_object)
+get_output_active_power_limits(active_object)
+get_rating(active_object)
+
+# check operation cost
+active_object.operation_cost
+
+# check to make sure no storage units with base power of 0 are in the system
+show_components(EnergyReservoirStorage, sys, [:base_power])
+
+#PHS related commands
+#= get_name(active_object)
 get_base_power(active_object) #installed nameplate capacity (MW) 
 get_storage_capacity(active_object)
 get_initial_storage(active_object)
@@ -506,12 +527,13 @@ get_pump_efficiency(active_object)
 get_active_power_limits(active_object)
 get_rating(active_object)
 get_status(active_object)
-# set_status!(active_object, PSY.PumpHydroStatusModule.PumpHydroStatus.GEN)
-#set_status!(active_object, PSY.PumpHydroStatusModule.PumpHydroStatus.OFF)
-#get_status(active_object)
-active_object.operation_cost # check operation cost
+set_status!(active_object, PSY.PumpHydroStatusModule.PumpHydroStatus.GEN)
+set_status!(active_object, PSY.PumpHydroStatusModule.PumpHydroStatus.OFF)
+get_status(active_object)
+active_object.operation_cost # check operation cost =#
+
 # check to make sure no units with base power of 0 are in the system
-show_components(HydroPumpedStorage, sys, [:base_power])
+#show_components(HydroPumpedStorage, sys, [:base_power])
 
 # remove all PHS_objects from system
 #= for PHS in collect(get_components(HydroPumpedStorage, sys))
@@ -520,7 +542,8 @@ end =#
 
 # Troubleshooting: Create DataFrame with storage parameters and write to CSV
 file_path = joinpath(paths[:data_dir], "PHS_parameters.csv");
-create_PHS_parameters_df(PHS_objects, file_path);
+create_PHS_storage_parameters_df(PHS_objects, file_path);
+#create_PHS_parameters_df(PHS_objects, file_path);
 
 ###########################
 # Query Nameplate Capacity of System
@@ -736,7 +759,7 @@ end
 # Hydro Energy Budgets
 ##########################
 # define budget df timeseries
-hydro_budget_ts_df = process_hydro_budget_data(joinpath(paths[:data_dir], "system", "Hourly_energy_budget.csv"))
+hydro_budget_ts_df = process_hydro_budget_data(joinpath(paths[:data_dir], "system", "Hourly_energy_budget.csv"));
 
 # Create dictionary of time series for thermal standard non-dispatch generators
 Hydro_budget_ts_container = create_Hydro_Budget_PSY_timeseries(hydro_budget_ts_df,HydroDispatch_generators)
@@ -773,7 +796,7 @@ ts_size = get_time_series_keys(active_object).size
 get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = true)
 get_time_series_array(SingleTimeSeries, active_object, "max_active_power_1998"; ignore_scaling_factors = false)
 
-# Pumped Hydro  Generators
+#= # Pumped Hydro  Generators
 ##########################
 # GENX has max_active_power  pinned at 1 for all timesteps across all weather years;
 # however we do need to create our PSY timeseries for the inflows and outflows
@@ -813,7 +836,8 @@ show_time_series(active_object)
 ts_key = get_time_series_keys(active_object)
 get_time_series_array(SingleTimeSeries, active_object, "inflow"; ignore_scaling_factors = true)
 get_time_series_array(SingleTimeSeries, active_object, "outflow"; ignore_scaling_factors = true)
-
+ =#
+ 
 #= # remove time series from PHS objects in system
 for gen in PHS_objects # loop through the collection of PHS objects
     for i in length(get_time_series_keys(gen))
@@ -1052,7 +1076,7 @@ end
 # Define PowerSimulations.jl (PSI) template and model 
 ##########################
 # define run_type
-run_type = "Monte_Carlo"
+run_type = "Deterministic"
 
 # define output path for simulation file
 simulation_file_path = paths[:sienna_simulation_dir]
@@ -1060,10 +1084,10 @@ simulation_file_path = paths[:sienna_simulation_dir]
 # Define the range of weather years based on run type
 if run_type == "Deterministic"
     weather_years = [1998]  # Single year for deterministic
-    sim_file_path = joinpath(paths[:sienna_simulation_dir], "deterministic")
+    sim_file_path = joinpath(paths[:sienna_simulation_dir], "deterministic");
 elseif run_type == "Monte_Carlo" 
     weather_years = 2000:2001  # Range of years for Monte Carlo
-    sim_file_path = joinpath(paths[:sienna_simulation_dir], "stochastic")
+    sim_file_path = joinpath(paths[:sienna_simulation_dir], "stochastic");
 else
     @warn "Incorrect setting for run_type; $run_type is not a valid option"
     return
@@ -1073,7 +1097,7 @@ end
 if ispath(sim_file_path)
     rm(sim_file_path, recursive=true, force=true)
 end
-mkpath(sim_file_path)
+mkpath(sim_file_path);
 
 # Initialize dictionary to store simulation results
 sim_results_dict = Dict{String, SimulationResults}()
@@ -1087,7 +1111,7 @@ template_uc = ProblemTemplate()
 define_storage_model(template_uc)
 
 # PHS
-define_PHS_model(template_uc)
+#define_PHS_model(template_uc)
 
 # Define branch model
 ###########################
@@ -1103,6 +1127,8 @@ define_AreaNetwork_model(template_uc)
 
 # Loop through each weather year
 for wy in weather_years
+
+    wy = 1998 # for testing
 
     # Remove all forecasts from the system
     remove_time_series!(sys, DeterministicSingleTimeSeries)
@@ -1222,8 +1248,8 @@ for (decision_name, sim_results) in sim_results_dict
     renewNonDispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__RenewableNonDispatch")
     hydro_dispatch_parameter = read_realized_parameter(results, "ActivePowerTimeSeriesParameter__HydroDispatch")
     hydro_budget_parameter = read_realized_parameter(results, "EnergyBudgetTimeSeriesParameter__HydroDispatch")
-    PHS_output_parameter = read_realized_parameter(results, "OutflowTimeSeriesParameter__HydroPumpedStorage")
-    PHS_input_parameter = read_realized_parameter(results, "InflowTimeSeriesParameter__HydroPumpedStorage")
+    #PHS_output_parameter = read_realized_parameter(results, "OutflowTimeSeriesParameter__HydroPumpedStorage")
+    #PHS_input_parameter = read_realized_parameter(results, "InflowTimeSeriesParameter__HydroPumpedStorage")
 
     # Realized Variables
     thermal_active_power = read_realized_variable(results, "ActivePowerVariable__ThermalStandard")
@@ -1232,17 +1258,18 @@ for (decision_name, sim_results) in sim_results_dict
     battery_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
     battery_energy = read_realized_variable(results, "EnergyVariable__EnergyReservoirStorage")
     hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch")
-    PHS_charge = read_realized_variable(results, "ActivePowerInVariable__HydroPumpedStorage")
-    PHS_discharge = read_realized_variable(results, "ActivePowerOutVariable__HydroPumpedStorage")
-    PHS_spillage = read_realized_variable(results, "WaterSpillageVariable__HydroPumpedStorage")
-    PHS_UpperReservoir = read_realized_variable(results, "HydroEnergyVariableUp__HydroPumpedStorage")
-    PHS_LowerReservoir = read_realized_variable(results, "HydroEnergyVariableDown__HydroPumpedStorage")
-    PHS_reservation = read_realized_variable(results, "ReservationVariable__HydroPumpedStorage")
+    #PHS_charge = read_realized_variable(results, "ActivePowerInVariable__HydroPumpedStorage")
+    #PHS_discharge = read_realized_variable(results, "ActivePowerOutVariable__HydroPumpedStorage")
+    #PHS_spillage = read_realized_variable(results, "WaterSpillageVariable__HydroPumpedStorage")
+    #PHS_UpperReservoir = read_realized_variable(results, "HydroEnergyVariableUp__HydroPumpedStorage")
+    #PHS_LowerReservoir = read_realized_variable(results, "HydroEnergyVariableDown__HydroPumpedStorage")
+    #PHS_reservation = read_realized_variable(results, "ReservationVariable__HydroPumpedStorage")
 
     # Combine results
     gen_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
-    storage_discharge_power = hcat(PHS_discharge, select(battery_discharge, Not(1)))
-    storage_charge_power = hcat(PHS_charge, select(battery_charge, Not(1)))
+s    # Temporarily commenting out PHS components - using only battery storage
+    storage_discharge_power = battery_discharge  # hcat(PHS_discharge, select(battery_discharge, Not(1)))
+    storage_charge_power = battery_charge  # hcat(PHS_charge, select(battery_charge, Not(1)))
     AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
     power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
 
@@ -1250,12 +1277,12 @@ for (decision_name, sim_results) in sim_results_dict
     pc_thermal = read_realized_expression(results, "ProductionCostExpression__ThermalStandard")
     pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch")
     pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch")
-    pc_PHS = read_realized_expression(results, "ProductionCostExpression__HydroPumpedStorage")
+    #pc_PHS = read_realized_expression(results, "ProductionCostExpression__HydroPumpedStorage")
     pc_all = hcat(pc_thermal, select(pc_renewable, Not(1)), select(pc_hydro, Not(1)), select(pc_PHS, Not(1)))
     fuel_consumption_thermal = read_realized_expression(results, "FuelConsumptionExpression__ThermalStandard")
 
     # Auxiliary variables
-    Energy_PHS = read_realized_variable(results, "HydroEnergyOutput__HydroPumpedStorage")
+    #Energy_PHS = read_realized_variable(results, "HydroEnergyOutput__HydroPumpedStorage")
     Energy_Hydro = read_realized_variable(results, "HydroEnergyOutput__HydroDispatch")
     Energy_Battery = read_realized_variable(results, "StorageEnergyOutput__EnergyReservoirStorage")
 
@@ -1268,8 +1295,8 @@ for (decision_name, sim_results) in sim_results_dict
     CSV.write(joinpath(results_file_path, "BTM_renewable_parameters.csv"), renewNonDispatch_parameter)
     CSV.write(joinpath(results_file_path, "hydro_parameter.csv"), hydro_dispatch_parameter)
     CSV.write(joinpath(results_file_path, "hydro_budget_parameter.csv"), hydro_budget_parameter)
-    CSV.write(joinpath(results_file_path, "PHS_output_parameter.csv"), PHS_output_parameter)
-    CSV.write(joinpath(results_file_path, "PHS_input_parameter.csv"), PHS_input_parameter)
+    #CSV.write(joinpath(results_file_path, "PHS_output_parameter.csv"), PHS_output_parameter)
+    #CSV.write(joinpath(results_file_path, "PHS_input_parameter.csv"), PHS_input_parameter)
 
     CSV.write(joinpath(results_file_path, "FTM_generator_power.csv"), gen_power)
     CSV.write(joinpath(results_file_path, "storage_charge.csv"), storage_charge_power)
@@ -1280,11 +1307,11 @@ for (decision_name, sim_results) in sim_results_dict
     CSV.write(joinpath(results_file_path, "fuel_consumption_thermal.csv"), fuel_consumption_thermal)
 
     # PHS Specific
-    CSV.write(joinpath(results_file_path, "PHS_UpperReservoir.csv"), PHS_UpperReservoir)
-    CSV.write(joinpath(results_file_path, "PHS_LowerReservoir.csv"), PHS_LowerReservoir)
-    CSV.write(joinpath(results_file_path, "PHS_spillage.csv"), PHS_spillage)
-    CSV.write(joinpath(results_file_path, "PHS_reservation.csv"), PHS_reservation)
-    CSV.write(joinpath(results_file_path, "Energy_PHS.csv"), Energy_PHS)
+    #CSV.write(joinpath(results_file_path, "PHS_UpperReservoir.csv"), PHS_UpperReservoir)
+    #CSV.write(joinpath(results_file_path, "PHS_LowerReservoir.csv"), PHS_LowerReservoir)
+    #CSV.write(joinpath(results_file_path, "PHS_spillage.csv"), PHS_spillage)
+    #CSV.write(joinpath(results_file_path, "PHS_reservation.csv"), PHS_reservation)
+    #CSV.write(joinpath(results_file_path, "Energy_PHS.csv"), Energy_PHS)
 
     # Hydro Specific
     CSV.write(joinpath(results_file_path, "Energy_Hydro.csv"), Energy_Hydro)

@@ -2,7 +2,7 @@
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "a83fd7d3671cdaab9f635f34c6ff16b0644fc4ea"
+project_hash = "f5f1fc6ef1b5406a1d581e7add402f03c79e7f4b"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -46,9 +46,9 @@ version = "1.1.3"
 
 [[deps.AppleAccelerate]]
 deps = ["Libdl", "LinearAlgebra"]
-git-tree-sha1 = "00163fcafc58970fb18e68ef5def1fde0b7cb692"
+git-tree-sha1 = "48c1ba3e10eb3a28789ef18e35ebc9c8e5c3d390"
 uuid = "13e28ba4-7ad8-5781-acae-3021b1ed3924"
-version = "0.4.0"
+version = "0.4.1"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -56,9 +56,9 @@ version = "1.1.2"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra"]
-git-tree-sha1 = "bebb10cd3f0796dd1429ba61e43990ba391186e9"
+git-tree-sha1 = "9606d7832795cbef89e06a550475be300364a8aa"
 uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
-version = "7.18.1"
+version = "7.19.0"
 
     [deps.ArrayInterface.extensions]
     ArrayInterfaceBandedMatricesExt = "BandedMatrices"
@@ -164,9 +164,9 @@ uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
 version = "1.1.1+0"
 
 [[deps.ConstructionBase]]
-git-tree-sha1 = "76219f1ed5771adbb096743bff43fb5fdd4c1157"
+git-tree-sha1 = "b4b092499347b18a015186eae3042f72267106cb"
 uuid = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
-version = "1.5.8"
+version = "1.6.0"
 
     [deps.ConstructionBase.extensions]
     ConstructionBaseIntervalSetsExt = "IntervalSets"
@@ -235,9 +235,9 @@ version = "1.15.1"
 
 [[deps.DifferentiationInterface]]
 deps = ["ADTypes", "LinearAlgebra"]
-git-tree-sha1 = "aa87a743e3778d35a950b76fbd2ae64f810a2bb3"
+git-tree-sha1 = "210933c93f39f832d92f9efbbe69a49c453db36d"
 uuid = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
-version = "0.6.52"
+version = "0.7.1"
 
     [deps.DifferentiationInterface.extensions]
     DifferentiationInterfaceChainRulesCoreExt = "ChainRulesCore"
@@ -304,9 +304,9 @@ version = "1.11.0"
 
 [[deps.Distributions]]
 deps = ["AliasTables", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
-git-tree-sha1 = "6d8b535fd38293bc54b88455465a1386f8ac1c3c"
+git-tree-sha1 = "3e6d038b77f22791b8e3472b7c633acea1ecac06"
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
-version = "0.25.119"
+version = "0.25.120"
 
     [deps.Distributions.extensions]
     DistributionsChainRulesCoreExt = "ChainRulesCore"
@@ -319,9 +319,9 @@ version = "0.25.119"
     Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[deps.DocStringExtensions]]
-git-tree-sha1 = "e7b7e6f178525d17c720ab9c081e4ef04429f860"
+git-tree-sha1 = "7442a5dfe1ebb773c29cc2962a8980f47221d76c"
 uuid = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
-version = "0.9.4"
+version = "0.9.5"
 
 [[deps.Downloads]]
 deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
@@ -403,9 +403,9 @@ version = "1.7.4"
 
 [[deps.Gurobi_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "62862ec8309813a9f115e57996c36d5a2824ef87"
+git-tree-sha1 = "0306382a5f266e08e48ccfd4ea2e05d61155a055"
 uuid = "c018c7e6-a5b0-4aea-8f80-9c1ef9991411"
-version = "12.0.1"
+version = "12.0.2"
 
 [[deps.H5Zblosc]]
 deps = ["Blosc", "HDF5"]
@@ -433,14 +433,14 @@ version = "1.14.6+0"
 
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "f93a9ce66cd89c9ba7a4695a47fd93b4c6bc59fa"
+git-tree-sha1 = "92f65c4d78ce8cdbb6b68daf88889950b0a99d11"
 uuid = "e33a78d0-f292-5ffc-b300-72abe9b543c8"
-version = "2.12.0+0"
+version = "2.12.1+0"
 
 [[deps.HydroPowerSimulations]]
 deps = ["Dates", "InfrastructureSystems", "JuMP", "PowerSimulations", "PowerSystems"]
-git-tree-sha1 = "58b496fe1a886e0af6cc6be2a798ebb075cc5db1"
-repo-rev = "rh/add_budget_for_dispatch"
+git-tree-sha1 = "abd2191edc818a32336b6eba31487526681d5790"
+repo-rev = "rh/new_decision_model"
 repo-url = "https://github.com/NREL-Sienna/HydroPowerSimulations.jl.git"
 uuid = "fc1677e0-6ad7-4515-bf3a-bd6bf20a0b1b"
 version = "0.11.1"
@@ -459,7 +459,9 @@ version = "0.7.8"
 
 [[deps.InfrastructureSystems]]
 deps = ["CSV", "DataFrames", "DataStructures", "Dates", "DocStringExtensions", "H5Zblosc", "HDF5", "InteractiveUtils", "JSON3", "Logging", "Mustache", "Pkg", "PrettyTables", "Random", "SHA", "SQLite", "Serialization", "StructTypes", "TOML", "Tables", "TerminalLoggers", "TimeSeries", "TimerOutputs", "UUIDs", "YAML"]
-git-tree-sha1 = "7094caeb5f962f10e6120adbf4205788bfc02703"
+git-tree-sha1 = "2271e53684fcd42e2e1fece5dae1e4e34afc3dd3"
+repo-rev = "main"
+repo-url = "https://github.com/NREL-Sienna/InfrastructureSystems.jl.git"
 uuid = "2cd47ed4-ca9b-11e9-27f2-ab636a7671f1"
 version = "2.6.0"
 
@@ -478,9 +480,9 @@ version = "1.4.3"
 
 [[deps.IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl"]
-git-tree-sha1 = "10bd689145d2c3b2a9844005d01087cc1194e79e"
+git-tree-sha1 = "0f14a5456bdc6b9731a5682f439a672750a09e48"
 uuid = "1d5cc7b8-4909-519e-a0f8-d0f5ad9712d0"
-version = "2024.2.1+0"
+version = "2025.0.4+0"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
@@ -516,9 +518,9 @@ version = "0.21.4"
 
 [[deps.JSON3]]
 deps = ["Dates", "Mmap", "Parsers", "PrecompileTools", "StructTypes", "UUIDs"]
-git-tree-sha1 = "196b41e5a854b387d99e5ede2de3fcb4d0422aae"
+git-tree-sha1 = "411eccfe8aba0814ffa0fdf4860913ed09c34975"
 uuid = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
-version = "1.14.2"
+version = "1.14.3"
 
     [deps.JSON3.extensions]
     JSON3ArrowExt = ["ArrowTypes"]
@@ -528,9 +530,9 @@ version = "1.14.2"
 
 [[deps.JuMP]]
 deps = ["LinearAlgebra", "MacroTools", "MathOptInterface", "MutableArithmetics", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays"]
-git-tree-sha1 = "c9ace86360c1dc0635de5f9e2ce5143b86c53311"
+git-tree-sha1 = "90002c976264d2f571c98cd1d12851f4cba403df"
 uuid = "4076af6c-e467-56ae-b986-b466b2749572"
-version = "1.25.0"
+version = "1.26.0"
 
     [deps.JuMP.extensions]
     JuMPDimensionalDataExt = "DimensionalData"
@@ -646,15 +648,15 @@ version = "1.10.1+0"
 
 [[deps.MKL]]
 deps = ["Artifacts", "Libdl", "LinearAlgebra", "Logging", "MKL_jll"]
-git-tree-sha1 = "18b02c359c1150bf182978e18dbd9ce7ccc860af"
+git-tree-sha1 = "39fd578c295085e77aedec501149a63f9ab0c0b6"
 uuid = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
-version = "0.7.0"
+version = "0.8.0"
 
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "oneTBB_jll"]
-git-tree-sha1 = "f046ccd0c6db2832a9f639e2c669c6fe867e5f4f"
+git-tree-sha1 = "5de60bc6cb3899cd318d80d627560fae2e2d99ae"
 uuid = "856f044c-d86e-5d09-b602-aeab76dc8ba7"
-version = "2024.2.0+0"
+version = "2025.0.1+1"
 
 [[deps.MPICH_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
@@ -686,9 +688,9 @@ version = "1.11.0"
 
 [[deps.MathOptInterface]]
 deps = ["BenchmarkTools", "CodecBzip2", "CodecZlib", "DataStructures", "ForwardDiff", "JSON3", "LinearAlgebra", "MutableArithmetics", "NaNMath", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays", "SpecialFunctions", "Test"]
-git-tree-sha1 = "22b3e0bd1442bf9f5d3cb76e7d34ca87b88d0f36"
+git-tree-sha1 = "2f2c18c6acab9042557bdb0af8c3a14dd7b64413"
 uuid = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
-version = "1.40.0"
+version = "1.41.0"
 
 [[deps.MbedTLS_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -707,11 +709,6 @@ git-tree-sha1 = "bc95bf4149bf535c09602e3acdf950d9b4376227"
 uuid = "9237b28f-5490-5468-be7b-bb81f5f5e6cf"
 version = "10.1.4+3"
 
-[[deps.MinCostFlows]]
-git-tree-sha1 = "8f52000f0db84f9bda8114c874410e69ce36f067"
-uuid = "62286e6e-1779-56f1-888a-1c0056788ce0"
-version = "0.1.2"
-
 [[deps.Missings]]
 deps = ["DataAPI"]
 git-tree-sha1 = "ec4f7fbeab05d7747bdf98eb74d130a2a2ed298d"
@@ -722,21 +719,15 @@ version = "1.2.0"
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 version = "1.11.0"
 
-[[deps.Mocking]]
-deps = ["Compat", "ExprTools"]
-git-tree-sha1 = "2c140d60d7cb82badf06d8783800d0bcd1a7daa2"
-uuid = "78c3b35d-d492-501b-9361-3d52fe80e533"
-version = "0.8.1"
-
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2023.12.12"
 
 [[deps.Mustache]]
 deps = ["Printf", "Tables"]
-git-tree-sha1 = "3b2db451a872b20519ebb0cec759d3d81a1c6bcb"
+git-tree-sha1 = "3cbd5dda543bc59f2e482607ccf84b633724fc32"
 uuid = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
-version = "1.0.20"
+version = "1.0.21"
 
 [[deps.MutableArithmetics]]
 deps = ["LinearAlgebra", "SparseArrays", "Test"]
@@ -746,9 +737,9 @@ version = "1.6.4"
 
 [[deps.NLSolversBase]]
 deps = ["ADTypes", "DifferentiationInterface", "Distributed", "FiniteDiff", "ForwardDiff"]
-git-tree-sha1 = "b14c7be6046e7d48e9063a0053f95ee0fc954176"
+git-tree-sha1 = "25a6638571a902ecfb1ae2a18fc1575f86b1d4df"
 uuid = "d41bc354-129a-5804-8e4c-c37616107c6c"
-version = "7.9.1"
+version = "7.10.0"
 
 [[deps.NLsolve]]
 deps = ["Distances", "LineSearches", "LinearAlgebra", "NLSolversBase", "Printf", "Reexport"]
@@ -765,18 +756,6 @@ version = "1.1.3"
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.2.0"
-
-[[deps.OnlineStats]]
-deps = ["AbstractTrees", "Dates", "Distributions", "LinearAlgebra", "OnlineStatsBase", "OrderedCollections", "Random", "RecipesBase", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns"]
-git-tree-sha1 = "8437102a36046b73a50af12430ec3e8e98768d80"
-uuid = "a15396b6-48d5-5d58-9928-6d29437db91e"
-version = "1.7.1"
-
-[[deps.OnlineStatsBase]]
-deps = ["AbstractTrees", "Dates", "LinearAlgebra", "OrderedCollections", "Statistics", "StatsBase"]
-git-tree-sha1 = "a5a5a68d079ce531b0220e99789e0c1c8c5ed215"
-uuid = "925886fa-5bf2-5e8e-b522-a9147a512338"
-version = "1.7.1"
 
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
@@ -807,27 +786,15 @@ uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
 version = "0.5.6+0"
 
 [[deps.OrderedCollections]]
-git-tree-sha1 = "cc4054e898b852042d7b503313f7ad03de99c3dd"
+git-tree-sha1 = "05868e21324cede2207c6f0f466b4bfef6d5e7ee"
 uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
-version = "1.8.0"
+version = "1.8.1"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "0e1340b5d98971513bddaa6bbed470670cebbbfe"
+git-tree-sha1 = "f07c06228a1c670ae4c87d1276b92c7c597fdda0"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
-version = "0.11.34"
-
-[[deps.PRASCore]]
-deps = ["Dates", "MinCostFlows", "OnlineStats", "OnlineStatsBase", "Printf", "Random", "Random123", "Reexport", "StatsBase", "TimeZones"]
-git-tree-sha1 = "130f67579242b47a413e5128a412fd4ee979785a"
-uuid = "c5c32b99-e7c3-4530-a685-6f76e19f7fe2"
-version = "0.7.1"
-
-[[deps.PRASFiles]]
-deps = ["Dates", "HDF5", "JSON3", "PRASCore", "StatsBase", "StructTypes", "TimeZones"]
-git-tree-sha1 = "edc00963d0ce7dbbfb323c90814ada340d1470e7"
-uuid = "a2806276-6d43-4ef5-91c0-491704cd7cf1"
-version = "0.7.1"
+version = "0.11.35"
 
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]
@@ -837,9 +804,9 @@ version = "0.12.3"
 
 [[deps.Pardiso]]
 deps = ["Libdl", "LinearAlgebra", "MKL_jll", "SparseArrays"]
-git-tree-sha1 = "4b618484bf94a52f02595cd73ac8a6417f4c0c70"
+git-tree-sha1 = "75a4ab716b076fe92d76fd3a7db08ab984c2d34a"
 uuid = "46dd5b70-b6fb-5a00-ae2d-e8fea33afaf2"
-version = "0.5.7"
+version = "1.0.1"
 
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
@@ -862,12 +829,6 @@ git-tree-sha1 = "36d8b4b899628fb92c2749eb488d884a926614d3"
 uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
 version = "1.4.3"
 
-[[deps.PowerAnalytics]]
-deps = ["DataFrames", "DataStructures", "Dates", "DocStringExtensions", "InfrastructureSystems", "InteractiveUtils", "PowerSimulations", "PowerSystems", "Statistics", "TimeSeries", "YAML"]
-git-tree-sha1 = "ce53302e3fb70ff167877ab2e1119e76e602422a"
-uuid = "56ce1300-00bc-47e4-ba8c-b166ccc19f51"
-version = "1.0.1"
-
 [[deps.PowerFlowData]]
 deps = ["DocStringExtensions", "InlineStrings", "Parsers", "PrettyTables", "Tables"]
 git-tree-sha1 = "04167df719ef1e8a1471a7033634c441f69bda1c"
@@ -875,32 +836,40 @@ uuid = "dd99e9e3-7471-40fc-b48d-a10501125371"
 version = "1.5.0"
 
 [[deps.PowerFlows]]
-deps = ["DataFrames", "DataStructures", "Dates", "InfrastructureSystems", "JSON3", "KLU", "LinearAlgebra", "Logging", "NLsolve", "PowerNetworkMatrices", "PowerSystems", "SparseArrays"]
-git-tree-sha1 = "de1cc0de757c8bef02466b5b00a6d7f42c3761ca"
+deps = ["DataFrames", "DataStructures", "Dates", "InfrastructureSystems", "JSON3", "KLU", "LinearAlgebra", "Logging", "PowerNetworkMatrices", "PowerSystems", "SparseArrays"]
+git-tree-sha1 = "94e21fa357e828fc287512c473492c2904bad0ef"
+repo-rev = "psy5"
+repo-url = "https://github.com/NREL-Sienna/PowerFlows.jl.git"
 uuid = "94fada2c-fd9a-4e89-8d82-81405f5cb4f6"
-version = "0.8.0"
+version = "0.9.0"
 
 [[deps.PowerModels]]
-deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "Memento", "NLsolve", "SparseArrays"]
-git-tree-sha1 = "6a48b251b581d7adba8d344696fdf03c7ddde7d6"
+deps = ["InfrastructureModels", "JSON", "JuMP", "LinearAlgebra", "Memento", "NLsolve", "PrecompileTools", "SparseArrays"]
+git-tree-sha1 = "b4abcf7d7de91e3bd42c3ab2bd0ec87291f12a93"
 uuid = "c36e90e8-916a-50a6-bd94-075b64ef4655"
-version = "0.21.3"
+version = "0.21.4"
 
 [[deps.PowerNetworkMatrices]]
-deps = ["AppleAccelerate", "DocStringExtensions", "HDF5", "InfrastructureSystems", "KLU", "LinearAlgebra", "MKL", "Pardiso", "PowerSystems", "SparseArrays"]
-git-tree-sha1 = "fb48bcc5317902cf9cc5ec2a9b804d44e463f3e9"
+deps = ["AppleAccelerate", "DocStringExtensions", "HDF5", "InfrastructureSystems", "JSON3", "KLU", "LinearAlgebra", "MKL", "Pardiso", "PowerSystems", "SparseArrays"]
+git-tree-sha1 = "8ede00ebbe9337b632ba10ebd3234a8b9ad64c3e"
+repo-rev = "psy5"
+repo-url = "https://github.com/NREL-Sienna/PowerNetworkMatrices.jl.git"
 uuid = "bed98974-b02a-5e2f-9fe0-a103f5c450dd"
-version = "0.12.1"
+version = "0.13.0"
 
 [[deps.PowerSimulations]]
-deps = ["CSV", "DataFrames", "DataStructures", "Dates", "Distributed", "DocStringExtensions", "HDF5", "InfrastructureSystems", "InteractiveUtils", "JSON3", "JuMP", "LinearAlgebra", "Logging", "MathOptInterface", "PowerFlows", "PowerModels", "PowerNetworkMatrices", "PowerSystems", "PrettyTables", "ProgressMeter", "Serialization", "TimeSeries", "TimerOutputs"]
-git-tree-sha1 = "37f201802731b6d310a332e8b69f1cf8008e8994"
+deps = ["CSV", "DataFrames", "DataStructures", "Dates", "Distributed", "Distributions", "DocStringExtensions", "HDF5", "InfrastructureSystems", "InteractiveUtils", "JSON3", "JuMP", "LinearAlgebra", "Logging", "MathOptInterface", "PowerFlows", "PowerModels", "PowerNetworkMatrices", "PowerSystems", "PrettyTables", "ProgressMeter", "Random", "Serialization", "TimeSeries", "TimerOutputs"]
+git-tree-sha1 = "238f3202e51edeac97b9986fdc84e89dd4b68e14"
+repo-rev = "psy5"
+repo-url = "https://github.com/NREL-Sienna/PowerSimulations.jl.git"
 uuid = "e690365d-45e2-57bb-ac84-44ba829e73c4"
 version = "0.30.1"
 
 [[deps.PowerSystems]]
 deps = ["CSV", "DataFrames", "DataStructures", "Dates", "DocStringExtensions", "InfrastructureSystems", "InteractiveUtils", "JSON3", "LinearAlgebra", "Logging", "PowerFlowData", "PrettyTables", "TimeSeries", "UUIDs", "Unicode", "YAML"]
-git-tree-sha1 = "48f97de8639d23bbe68eadbd3db942c21602603d"
+git-tree-sha1 = "047b5c58e940c41f66cf781a0471878f1ef89d7f"
+repo-rev = "psy5"
+repo-url = "https://github.com/NREL-Sienna/PowerSystems.jl.git"
 uuid = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 version = "4.6.2"
 
@@ -970,18 +939,6 @@ deps = ["SHA"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 version = "1.11.0"
 
-[[deps.Random123]]
-deps = ["Random", "RandomNumbers"]
-git-tree-sha1 = "4743b43e5a9c4a2ede372de7061eed81795b12e7"
-uuid = "74087812-796a-5b5d-8853-05524746bad3"
-version = "1.7.0"
-
-[[deps.RandomNumbers]]
-deps = ["Random"]
-git-tree-sha1 = "c6ec94d2aaba1ab2ff983052cf6a606ca5985902"
-uuid = "e6cf234a-135c-5ec9-84dd-332b85af5143"
-version = "1.6.0"
-
 [[deps.RecipesBase]]
 deps = ["PrecompileTools"]
 git-tree-sha1 = "5c3d09cc4f31f5fc6af001c250bf1278733100ff"
@@ -1001,9 +958,9 @@ version = "1.3.1"
 
 [[deps.Revise]]
 deps = ["CodeTracking", "FileWatching", "JuliaInterpreter", "LibGit2", "LoweredCodeUtils", "OrderedCollections", "REPL", "Requires", "UUIDs", "Unicode"]
-git-tree-sha1 = "cedc9f9013f7beabd8a9c6d2e22c0ca7c5c2a8ed"
+git-tree-sha1 = "f6f7d30fb0d61c64d0cfe56cf085a7c9e7d5bc80"
 uuid = "295af30f-e4ad-537b-8983-00126c2a3abe"
-version = "3.7.6"
+version = "3.8.0"
 weakdeps = ["Distributed"]
 
     [deps.Revise.extensions]
@@ -1037,12 +994,6 @@ git-tree-sha1 = "9a325057cdb9b066f1f96dc77218df60fe3007cb"
 uuid = "76ed43ae-9a5d-5a62-8c75-30186b810ce8"
 version = "3.48.0+0"
 
-[[deps.Scratch]]
-deps = ["Dates"]
-git-tree-sha1 = "3bac05bc7e74a75fd9cba4295cde4045d9fe2386"
-uuid = "6c6a2e73-6563-6170-7368-637461726353"
-version = "1.2.1"
-
 [[deps.SentinelArrays]]
 deps = ["Dates", "Random"]
 git-tree-sha1 = "712fb0231ee6f9120e005ccd56297abbc053e7e0"
@@ -1058,12 +1009,6 @@ deps = ["ConstructionBase", "Future", "MacroTools", "StaticArraysCore"]
 git-tree-sha1 = "c5391c6ace3bc430ca630251d02ea9687169ca68"
 uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 version = "1.1.2"
-
-[[deps.SiennaPRASInterface]]
-deps = ["CSV", "DataFrames", "Dates", "DocStringExtensions", "JSON", "PRASCore", "PRASFiles", "PowerSystems", "Random", "Random123", "TimeSeries", "TimeZones", "UUIDs"]
-git-tree-sha1 = "17d5111f3f4895537c2acedda2f26459df1c5c34"
-uuid = "4b496c86-8d00-441d-b504-079c710e0aa7"
-version = "1.0.2"
 
 [[deps.Sockets]]
 uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
@@ -1109,9 +1054,9 @@ weakdeps = ["SparseArrays"]
 
 [[deps.StatsAPI]]
 deps = ["LinearAlgebra"]
-git-tree-sha1 = "1ff449ad350c9c4cbc756624d6f8a8c3ef56d3ed"
+git-tree-sha1 = "9d72a13a3f4dd3795a195ac5a44d7d6ff5f552ff"
 uuid = "82ae8749-77ed-4fe6-ae5f-f523153014b0"
-version = "1.7.0"
+version = "1.7.1"
 
 [[deps.StatsBase]]
 deps = ["AliasTables", "DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
@@ -1134,8 +1079,10 @@ version = "1.5.0"
     InverseFunctions = "3587e190-3f89-42d0-90ee-14403ec27112"
 
 [[deps.StorageSystemsSimulations]]
-deps = ["DataStructures", "Dates", "DocStringExtensions", "InfrastructureSystems", "JuMP", "LinearAlgebra", "MathOptInterface", "PowerSimulations", "PowerSystems"]
-git-tree-sha1 = "638bcf1648baf84a4d6d80cd142c0b72204063a8"
+deps = ["DataStructures", "Dates", "DocStringExtensions", "HDF5_jll", "InfrastructureSystems", "JuMP", "LinearAlgebra", "MathOptInterface", "PowerSimulations", "PowerSystems"]
+git-tree-sha1 = "d7fad7324404488918c4b98c375f5b2382bf9385"
+repo-rev = "psy5"
+repo-url = "https://github.com/NREL-Sienna/StorageSystemsSimulations.jl.git"
 uuid = "e2f1a126-19d0-4674-9252-42b2384f8e3c"
 version = "0.12.0"
 
@@ -1175,12 +1122,6 @@ deps = ["Dates"]
 uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 version = "1.0.3"
 
-[[deps.TZJData]]
-deps = ["Artifacts"]
-git-tree-sha1 = "72df96b3a595b7aab1e101eb07d2a435963a97e2"
-uuid = "dc5dba14-91b3-4cab-a142-028a31da12f7"
-version = "1.5.0+2025b"
-
 [[deps.TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
 git-tree-sha1 = "c06b2f539df1c6efa794486abfb6ed2022561a39"
@@ -1189,9 +1130,9 @@ version = "1.0.1"
 
 [[deps.Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "OrderedCollections", "TableTraits"]
-git-tree-sha1 = "598cd7c1f68d1e205689b1c2fe65a9f85846f297"
+git-tree-sha1 = "f2c1efbc8f3a609aadf318094f8fc5204bdaf344"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.12.0"
+version = "1.12.1"
 
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
@@ -1215,21 +1156,11 @@ git-tree-sha1 = "b0915b2d6032bab5d8c9424a37bc621500a67df9"
 uuid = "9e3dc215-6440-5c97-bce1-76c03772f85e"
 version = "0.24.2"
 
-[[deps.TimeZones]]
-deps = ["Artifacts", "Dates", "Downloads", "InlineStrings", "Mocking", "Printf", "Scratch", "TZJData", "Unicode", "p7zip_jll"]
-git-tree-sha1 = "2c705e96825b66c4a3f25031a683c06518256dd3"
-uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "1.21.3"
-weakdeps = ["RecipesBase"]
-
-    [deps.TimeZones.extensions]
-    TimeZonesRecipesBaseExt = "RecipesBase"
-
 [[deps.TimerOutputs]]
 deps = ["ExprTools", "Printf"]
-git-tree-sha1 = "f57facfd1be61c42321765d3551b3df50f7e09f6"
+git-tree-sha1 = "3748bd928e68c7c346b52125cf41fff0de6937d0"
 uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
-version = "0.5.28"
+version = "0.5.29"
 
     [deps.TimerOutputs.extensions]
     FlameGraphsExt = "FlameGraphs"
@@ -1269,9 +1200,9 @@ version = "1.6.1"
 
 [[deps.YAML]]
 deps = ["Base64", "Dates", "Printf", "StringEncodings"]
-git-tree-sha1 = "b46894beba6c05cd185d174654479aaec09ea6b1"
+git-tree-sha1 = "2f58ac39f64b41fb812340347525be3b590cce3b"
 uuid = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
-version = "0.4.13"
+version = "0.4.14"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]

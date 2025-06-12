@@ -328,7 +328,7 @@ function create_transmission_interface_parameters_df(sys::System, paths::Dict)
     CSV.write(joinpath(paths[:data_dir], "transmission_interface_parameters.csv"), df)
 end
 
-function create_PHS_parameters_df(pumped_hydro_objects::Vector{HydroPumpedStorage}, output_path::String)
+#= function create_PHS_parameters_df(pumped_hydro_objects::Vector{HydroPumpedStorage}, output_path::String)
     # Create DataFrame with column names matching the parameters we want to check
     df_pumped_hydro = DataFrame(
         name = String[],
@@ -363,6 +363,48 @@ function create_PHS_parameters_df(pumped_hydro_objects::Vector{HydroPumpedStorag
     CSV.write(output_path, df_pumped_hydro)
     
     return df_pumped_hydro
+end =#
+
+function create_PHS_storage_parameters_df(PHS_Storage_objects::Vector{EnergyReservoirStorage}, output_path::String)
+    # Create DataFrame with column names matching the parameters we want to check
+    df_PHS_storage = DataFrame(
+        name = String[],
+        base_power = Float64[],
+        storage_capacity = Float64[],
+        storage_level_limits_min = Float64[],
+        storage_level_limits_max = Float64[],
+        initial_storage_level = Float64[],
+        efficiency_in = Float64[],
+        efficiency_out = Float64[],
+        input_power_limits_min = Float64[],
+        input_power_limits_max = Float64[],
+        output_power_limits_min = Float64[],
+        output_power_limits_max = Float64[],
+        rating = Float64[]
+    )
+
+    # Loop through all storage devices and add their parameters
+    for PHS_storage in PHS_Storage_objects
+        push!(df_PHS_storage, (
+            get_name(PHS_storage),
+            get_base_power(PHS_storage),
+            get_storage_capacity(PHS_storage),
+            get_storage_level_limits(PHS_storage).min,
+            get_storage_level_limits(PHS_storage).max,
+            get_initial_storage_capacity_level(PHS_storage),
+            get_efficiency(PHS_storage).in,
+            get_efficiency(PHS_storage).out,
+            get_input_active_power_limits(PHS_storage).min,
+            get_input_active_power_limits(PHS_storage).max,
+            get_output_active_power_limits(PHS_storage).min,
+            get_output_active_power_limits(PHS_storage).max,
+            get_rating(PHS_storage)
+        ))
+    end
+
+    # Write the DataFrame to a CSV file
+    CSV.write(output_path, df_PHS_storage)
+
 end
 
 function query_write_export_results(sim::Simulation, path_scenario::String, uc_decision_name::String)

@@ -18,7 +18,7 @@ function define_storage_model(template_uc)
     PowerSimulations.set_device_model!(template_uc, storage_model)
 end
 
-function define_PHS_model(template_uc)
+#= function define_PHS_model(template_uc)
     # Define custom DeviceModel for EnergyReservoirStorage Q: How do I do this? 
     PHS_model = DeviceModel(
         HydroPumpedStorage,
@@ -29,7 +29,7 @@ function define_PHS_model(template_uc)
     )
     # Assign the storage model to the template_uc
     PowerSimulations.set_device_model!(template_uc, PHS_model)
-end
+end =#
 
 
 function define_thermal_model(template_uc, WY)

@@ -601,7 +601,7 @@ function create_generic_daily_hydrobudget_timeseries(sys::System, WY::Int64, hyd
 end
 
 
-function create_PHS_PSY_timeseries(PHS_collection::Vector{HydroPumpedStorage})
+#= function create_PHS_PSY_timeseries(PHS_collection::Vector{HydroPumpedStorage})
     # Initialize container for storing timeseries as nested dictionary
     ts_container = Dict{String, Dict{String, SingleTimeSeries}}()
     
@@ -639,7 +639,9 @@ function create_PHS_PSY_timeseries(PHS_collection::Vector{HydroPumpedStorage})
     end
     
     return ts_container
-end
+end =#
+
+
 
 function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalStandard})
     # reassign fuel_price timeseries to ThermalStandard objects
@@ -656,7 +658,7 @@ function update_TS_fuel_price!(sys::System, thermal_standards::Vector{ThermalSta
     end
 end
 
-function update_TS_PHS_flows!(sys::System, PHS_objects::Vector{HydroPumpedStorage})
+#= function update_TS_PHS_flows!(sys::System, PHS_objects::Vector{HydroPumpedStorage})
     # reassign inflow and outflow timeseries to PHS objects
     for phs in PHS_objects
         # Handle inflow timeseries
@@ -679,7 +681,7 @@ function update_TS_PHS_flows!(sys::System, PHS_objects::Vector{HydroPumpedStorag
             set_outflow!(sys, phs, new_outflow_ts)
         end
     end
-end
+end =#
 
 
 

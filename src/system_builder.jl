@@ -3,6 +3,7 @@ function create_buses(zone_listing_dict::OrderedDict{String,Int64})
     buses_dict = OrderedDict{String,ACBus}()
     for (zone_name, zone_number) in zone_listing_dict
         bus = ACBus(;
+            available = true, #PSY5 field change
             number = zone_number, # assign zone number as bus number
             name = zone_name,  # assign string as bus name
             bustype = zone_number == 1 ? "REF" : "PV", # defining as generator bus (i.e., active power & voltage magnitude)
@@ -387,7 +388,7 @@ function update_TS_must_run_status!(TS_collection::Vector{ThermalStandard})
         must_run = false # default value
 
         # Set must_run flag based on fuel type and prime mover type
-        if fuel_type in ["WOOD_WASTE", "GEOTHERMAL", "NUCLEAR"]
+        if fuel_type in ["WOOD_WASTE_SOLIDS", "GEOTHERMAL", "NUCLEAR"]
             must_run = true
         end
         if pm_type == PrimeMovers.OT
@@ -735,7 +736,116 @@ function create_storage_objects(sys::System, storage_df::DataFrame, capacity_df:
     return Storage_dict
 end
 
-function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
+function create_PHS_storage_objects(sys::System, storage_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, storage_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
+
+    #initialize storage dictionary
+    PHS_Storage_dict = Dict{String, EnergyReservoirStorage}()
+
+    for i in 1:count(!ismissing, storage_df[:, "Resource"]) # loop through all storage resources (Batteries and PHS)
+
+        # retrieve name of storage resource
+        resource_name = storage_df[i, :Resource]
+
+        # Skip if it's a pumped hydro unit
+        if haskey(PM_type_dict, resource_name) && PM_type_dict[resource_name] == "PS"
+            # Print current resource being processed
+            @info "Processing PHS storage resource: $resource_name"
+        else
+            continue # terminate current iteration and proceed to next resource
+        end
+
+        # retrieve capacity of storage resource
+        power_capacity_mw = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndCap], digits=3)
+        energy_capacity_mwh = round(capacity_df[capacity_df.Resource .== resource_name, :][1, :EndEnergyCap], digits=3) 
+
+        # Skip if either power or energy capacity is 0
+        if power_capacity_mw == 0.0 || energy_capacity_mwh == 0.0
+            @info "Skipping storage resource $resource_name due to zero capacity (power: $power_capacity_mw MW, energy: $energy_capacity_mwh MWh)"
+            continue
+        end
+
+        # retrieve the zone number (GENX)
+        zone_number = storage_df[i, :Zone]
+        # retrieve the bus name (PSY) by finding the key in zones_dict that matches our zone number
+        bus_name = findfirst(x -> x == zone_number, zone_dict)
+        if bus_name === nothing
+            @error "No bus found for zone $zone_number in zones_dict"
+            continue
+        end
+        # retrieve the bus object (PSY)
+        bus_object = get_component(ACBus, sys, bus_name)
+
+        # define Variable O&M costs
+        charge_VOM = round(storage_df[i, :Var_OM_Cost_per_MWh], digits=2)
+        discharge_VOM = round(storage_df[i, :Var_OM_Cost_per_MWh], digits=2)
+
+        # Fixed O&M
+        FOM_MW = round(storage_df[i, :Fixed_OM_Cost_per_MWyr], digits=2)
+        FOM_MWh = round(storage_df[i, :Fixed_OM_Cost_per_MWhyr], digits=2)
+
+        # define operation cost
+        Op_Cost = StorageCost(
+            charge_variable_cost = CostCurve(LinearCurve(charge_VOM, 0.0)),
+            discharge_variable_cost = CostCurve(LinearCurve(discharge_VOM, 0.0)),
+            fixed = FOM_MW*power_capacity_mw + FOM_MWh*energy_capacity_mwh,
+            start_up = 0.0,
+            shut_down = 0.0,
+            energy_shortage_cost = 0.0, # Cost incurred by the model for being short of the energy target
+            energy_surplus_cost = 0.0, # Cost incurred by the model for surplus energy stored
+        )
+
+        # define prime mover type using the key-value mapping from MoverTypesMapping.csv
+        if !haskey(PM_type_dict, resource_name)
+            @warn "No prime mover type mapping found for resource $resource_name in MoverTypesMapping.csv"
+            PM_type = PrimeMovers.OT  # Default to Other if not found
+        else
+            PM_type = getproperty(PrimeMovers, Symbol(PM_type_dict[resource_name]))
+        end
+
+        # define storage technology type
+        if !haskey(storage_type_dict, resource_name)
+            @warn "No storage technology type mapping found for resource $resource_name in StorageMapping.csv"
+            ST_type = StorageTech.BAT  # Default to Battery if not found
+        else
+            ST_type = getproperty(StorageTech, Symbol(storage_type_dict[resource_name]))
+        end
+
+        # define storage efficiency
+        charge_efficiency = round(storage_df[i, :Eff_Up], digits=3)
+        discharge_efficiency = round(storage_df[i, :Eff_Down], digits=3)
+
+        # define PHS storage device (using battery storage as our template)
+        PHS_storage = EnergyReservoirStorage(;
+            name = resource_name,
+            available = true,
+            bus = bus_object,
+            prime_mover_type = PM_type,
+            storage_technology_type = ST_type,
+            storage_capacity = power_capacity_mw == 0 ? 0.0 : round(energy_capacity_mwh/power_capacity_mw, digits=3),# unitized by device base power 
+            storage_level_limits = (min = 0.0, max = 1.0), # limits on SOC range 
+            initial_storage_capacity_level = 0.50, # initial SOC level 
+            rating = 1.0, # max output power rating; unitized by DEVICE base_power
+            active_power = 0.0, # initial active power output 
+            input_active_power_limits = (min = 0.0, max = 1.0),
+            output_active_power_limits = (min = 0.0, max = 1.0),
+            efficiency = (in = charge_efficiency, out = discharge_efficiency),
+            reactive_power = 0.0, # unitized by DEVICE base_power 
+            reactive_power_limits = nothing, # No reactive power limits
+            base_power = power_capacity_mw, # setting base power to nameplate capacity
+            operation_cost = Op_Cost,
+            conversion_factor = 1.0, # Conversion factor of storage_capacity to MWh, if different than 1.0.
+            storage_target = 0.0, #  Storage target at the end of simulation as ratio of storage capacity
+            cycle_limits = 365, # Storage Maximum number of cycles per year
+        )
+
+        # add storage device to Storage_dict  
+        PHS_Storage_dict[resource_name] = PHS_storage
+
+    end
+    return PHS_Storage_dict
+end
+
+#= function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::DataFrame, PM_type_dict::Dict, zone_dict::OrderedDict{String,Int64})
     
     #initialize pumped hydro dictionary
     PumpedHydro_dict = Dict{String, HydroPumpedStorage}()
@@ -840,7 +950,10 @@ function create_PHS_objects(sys::System, storage_df::DataFrame, capacity_df::Dat
     end
 
     return PumpedHydro_dict
-end
+end =#
+
+
+
 
 function create_CAISO_reg_reserve_services()
     # Initialize reserve dictionary
@@ -882,7 +995,8 @@ function create_CAISO_reg_reserve_units(
     renew_d_generators::Vector{RenewableDispatch},
     hydro_generators::Vector{HydroDispatch},
     storage_units::Vector{EnergyReservoirStorage}, 
-    pumped_hydro_units::Vector{HydroPumpedStorage}, 
+    #pumped_hydro_units::Vector{HydroPumpedStorage},
+    pumped_hydro_units::Vector{EnergyReservoirStorage}, # temporary fix for PHS
     thermal_df::DataFrame,
     vre_df::DataFrame,
     hydro_df::DataFrame,
