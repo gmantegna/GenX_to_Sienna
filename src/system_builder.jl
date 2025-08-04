@@ -105,7 +105,8 @@ function create_area_interchanges(existing_lines_df::DataFrame, sys_base_power::
 
     for i in 1:nrow(existing_lines_df) # loop through all existing lines
         # Define PSY Objects 
-        line_psy_o = lines_dict[string(i)]
+        network_line_number = string(existing_lines_df[i, :Network_Lines])
+        line_psy_o = lines_dict[network_line_number]
         line_psy = get_name(line_psy_o) # string 
         line_rating = get_rating(line_psy_o)
         from_area_o = get_area(get_from(get_arc(line_psy_o)))
@@ -137,6 +138,7 @@ end
 
 function create_transmission_interfaces(interface_df::DataFrame, lines_dict::OrderedDict{String,Line}, sys_base_power::Float64)
     # this function creates PSY TransmissionInterface objects for each simultaneous flow group in the GENX model
+    # note we combine the CAISO_Export_Limit and CAISO_Import_Limit into a single interface (CAISO_Net_Import_Limit)
     interfaces_dict = OrderedDict{String,TransmissionInterface}()
     
     # Get unique flow groups
@@ -145,7 +147,64 @@ function create_transmission_interfaces(interface_df::DataFrame, lines_dict::Ord
     # Convert direction strings in GENX to integers (forward=1; reverse=-1)
     interface_df.Direction = get.(Ref(Dict("forward" => 1, "reverse" => -1)), interface_df.Direction, "unknown")
     
-    for interface_name in sfg_constraints # loop through all simultaneous flow groups
+    # Check if both CAISO_Export_Limit and CAISO_Import_Limit exist
+    has_export = "CAISO_Export_Limit" in sfg_constraints
+    has_import = "CAISO_Import_Limit" in sfg_constraints
+    
+    # Handle CAISO combined interface if both exist
+    if has_export && has_import
+        # Get data for both interfaces
+        export_lines = interface_df[interface_df[!, "Simultaneous Flow Group"] .== "CAISO_Export_Limit", :]
+        import_lines = interface_df[interface_df[!, "Simultaneous Flow Group"] .== "CAISO_Import_Limit", :]
+        
+        # Get limits
+        export_limit = export_lines[1, "limit_MW"]
+        import_limit = import_lines[1, "limit_MW"]
+        
+        # Create combined direction mapping
+        combined_direction_mapping = Dict{String, Int}()
+        
+        # Add export lines direction mapping
+        for row in eachrow(export_lines)
+            line_number = string(row.Line_Number)
+            if haskey(lines_dict, line_number)
+                line_name = get_name(lines_dict[line_number])
+                direction = row.Direction
+                combined_direction_mapping[line_name] = direction
+            else
+                @warn "Line number $line_number not found in lines_dict for CAISO_Export_Limit"
+            end
+        end
+        
+        # Add import lines direction mapping
+        for row in eachrow(import_lines)
+            line_number = string(row.Line_Number)
+            if haskey(lines_dict, line_number)
+                line_name = get_name(lines_dict[line_number])
+                direction = row.Direction
+                combined_direction_mapping[line_name] = direction
+            else
+                @warn "Line number $line_number not found in lines_dict for CAISO_Import_Limit"
+            end
+        end
+        
+        # Create combined interface
+        combined_interface = TransmissionInterface(
+            name = "CAISO_Net_Import_Limit",
+            available = true,
+            active_power_flow_limits = (min = -export_limit/sys_base_power, max = import_limit/sys_base_power),
+            violation_penalty = 5000.0,
+            direction_mapping = combined_direction_mapping
+        )
+        
+        # Add to dictionary
+        interfaces_dict["CAISO_Net_Import_Limit"] = combined_interface
+        
+        # Remove both from processing list
+        sfg_constraints = filter(x -> x != "CAISO_Export_Limit" && x != "CAISO_Import_Limit", sfg_constraints)
+    end
+    
+    for interface_name in sfg_constraints # loop through all remaining simultaneous flow groups
         
         # testing with CAISO export limit
         #interface_name = "CAISO_Export_Limit"
@@ -183,7 +242,7 @@ function create_transmission_interfaces(interface_df::DataFrame, lines_dict::Ord
         interface = TransmissionInterface(
             name = interface_name,
             available = true,
-            active_power_flow_limits = (min = 0.0, max = sfg_limit/sys_base_power),
+            active_power_flow_limits = (min = -9999.0/sys_base_power, max = sfg_limit/sys_base_power),
             violation_penalty = 5000.0, # making this a soft constraint for now
             direction_mapping = direction_mapping
         )

@@ -158,11 +158,24 @@ function define_RegDown_service_model(template_uc)
     PowerSimulations.set_service_model!(template_uc, reg_reserve_down_model)
 end
 
-#= # TX interface
+#= # TX interface (original definition)
 function define_TX_interface_model(template_uc)
     # Assign the service model to the template_uc
     PowerSimulations.set_service_model!(template_uc, TransmissionInterface, ConstantMaxInterfaceFlow)
 end =#
+
+# TX interface
+function define_TX_interface_model(template_uc)
+    # Define the transmission interface service model 
+    tx_interface_model = ServiceModel(
+        TransmissionInterface, 
+        ConstantMaxInterfaceFlow;
+        use_slacks = false  # Set to true if you want to allow constraint violations with penalties
+    )
+    
+    # Assign the service model to the template_uc
+    PowerSimulations.set_service_model!(template_uc, tx_interface_model)
+end
 
 
 #################################

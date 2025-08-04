@@ -108,7 +108,7 @@ get_name(get_area(active_object))
 # define collection of areas
 areas = collect(get_components(Area, sys))
 
-# Lines
+# Lines (#not lines and area_interchanges are effectively the same given our zonal network topology)
 ##########################
 # pull in lines info from GENX Network Topology
 existing_lines_mapping_df = network_df[:, Between("Network_Lines", "Profile_Reverse")]
@@ -182,7 +182,6 @@ file_path = joinpath(paths[:data_dir], "area_interchange_parameters.csv")
 create_area_interchange_parameters_df(area_interchanges, file_path)
 
 # Transmission Interfaces
-#(note: TX interfaces can only be assigned to lines; NREL working on a "TOT" to enable an interface to an AI)
 ##########################
 # read interface data
 interface_df = CSV.read(joinpath(paths[:data_dir], "system", "Simultaneous_Flow_Constraints.csv"), DataFrame)
@@ -192,7 +191,32 @@ interfaces_dict = create_transmission_interfaces(interface_df, lines_dict, sys_b
 
 # add interfaces to system
 for (interface_name, interface) in interfaces_dict
-    add_component!(sys, interface)
+    println("\nProcessing interface: $interface_name")
+    direction_mapping = get_direction_mapping(interface)
+    println("Direction mapping keys: $(collect(keys(direction_mapping)))")
+    
+    # Get the area interchanges that this interface applies to based on direction_mapping
+    interface_area_interchanges = AreaInterchange[]
+    
+    for line_name in keys(direction_mapping)
+        println("  Looking for area interchange: $line_name")
+        # Find the corresponding area interchange by matching line names
+        area_interchange = get_component(AreaInterchange, sys, line_name)
+        if !isnothing(area_interchange)
+            push!(interface_area_interchanges, area_interchange)
+            println("    Found: $(get_name(area_interchange))")
+        else
+            @warn "AreaInterchange with name $line_name not found in system for interface $interface_name"
+        end
+    end
+    
+    # Only add the service if we found contributing devices
+    if !isempty(interface_area_interchanges)
+        add_service!(sys, interface, interface_area_interchanges)
+        println("Added interface $interface_name with $(length(interface_area_interchanges)) area interchanges")
+    else
+        @warn "No contributing area interchanges found for interface $interface_name"
+    end
 end
 
 # let's check our work
@@ -201,14 +225,27 @@ show_components(TransmissionInterface, sys)
 
 # define collection of transmission interfaces
 transmission_interfaces = collect(get_components(TransmissionInterface, sys))
-active_object = transmission_interfaces[1]
-get_name(active_object)
-get_active_power_flow_limits(active_object)
-get_direction_mapping(active_object)
+
+# let's look at CAISO_Net_Import as an exmample  
+active_service = transmission_interfaces[1]
+get_name(active_service)
+get_active_power_flow_limits(active_service)
+get_direction_mapping(active_service)
+
+# check contributing devices 
+for as_units in get_contributing_devices(sys, active_service)
+    println(get_name(as_units))
+end
+
 
 # Create and write transmission interface parameters to CSV
 file_path = joinpath(paths[:data_dir], "transmission_interface_parameters.csv");
 create_transmission_interface_parameters_df(sys, paths);
+
+#= # remove all TX interfaces from system
+for TX_Interface in collect(get_components(TransmissionInterface, sys))
+    remove_component!(sys, TX_Interface)
+end =#
 
 ##########################
 # Define PowerLoads 
@@ -488,6 +525,7 @@ create_storage_parameters_df(Storage_objects, file_path);
 ##########################
 
 # define storage generator objects
+# NOTE modeling as storage devices (i.e., EnergyReservoirStorage) until Sienna fixes bugs w/ PHS model
 PumpedHydro_dict = create_PHS_storage_objects(sys, storage_df, capacity_df, PM_type_dict, storage_type_dict, zone_dict)
 #PumpedHydro_dict = create_PHS_objects(sys, storage_df, capacity_df, PM_type_dict, zone_dict)   
 
@@ -880,6 +918,7 @@ add_service!(sys, reg_reserve_serv_dict["CAISO_reg_down"], reg_reserve_units_dic
 reserveUp_services = collect(get_components(VariableReserve{ReserveUp}, sys))
 reserveDown_services = collect(get_components(VariableReserve{ReserveDown}, sys))
 
+
 # check to make sure reserve services were added
 show_components(VariableReserve{ReserveUp}, sys)
 show_components(VariableReserve{ReserveDown}, sys)
@@ -895,11 +934,16 @@ get_services(active_object)
 active_object = get_component(HydroDispatch, sys, "CAISO_Hydro_PGE")
 get_services(active_object)
 
+# check contributing devices 
+##########################
+# Reserve UP
 active_service = reserveUp_services[1]
 for as_units in get_contributing_devices(sys, active_service)
     println(get_name(as_units))
 end
 
+# Reserve Down
+##########################
 active_service = reserveDown_services[1]
 for as_units in get_contributing_devices(sys, active_service)
     println(get_name(as_units))
@@ -1079,7 +1123,7 @@ end
 run_type = "Deterministic"
 
 # define output path for simulation file
-simulation_file_path = paths[:sienna_simulation_dir]
+simulation_file_path = paths[:sienna_simulation_dir];
 
 # Define the range of weather years based on run type
 if run_type == "Deterministic"
@@ -1158,8 +1202,15 @@ for wy in weather_years
 
     # define the service models
     ###########################
+    #RegUp
     #define_RegUp_service_model(template_uc) # remember: we already updated our timeseries for the active WY
+    #RegDown
     #define_RegDown_service_model(template_uc)
+    #Transmission Interfaces 
+    define_TX_interface_model(template_uc)
+
+    # explore TX interface service model
+    #tx_model = get_service_model(template_uc, TransmissionInterface)
 
     # Assign simulation name
     decision_name = "$(lowercase(run_type))_$wy"
@@ -1258,6 +1309,8 @@ for (decision_name, sim_results) in sim_results_dict
     battery_discharge = read_realized_variable(results, "ActivePowerOutVariable__EnergyReservoirStorage")
     battery_energy = read_realized_variable(results, "EnergyVariable__EnergyReservoirStorage")
     hydro_active_power = read_realized_variable(results, "ActivePowerVariable__HydroDispatch")
+    AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
+    # Temporarily commenting out PHS components - using only battery storage
     #PHS_charge = read_realized_variable(results, "ActivePowerInVariable__HydroPumpedStorage")
     #PHS_discharge = read_realized_variable(results, "ActivePowerOutVariable__HydroPumpedStorage")
     #PHS_spillage = read_realized_variable(results, "WaterSpillageVariable__HydroPumpedStorage")
@@ -1267,19 +1320,19 @@ for (decision_name, sim_results) in sim_results_dict
 
     # Combine results
     gen_power = hcat(thermal_active_power, select(renewDispatch_active_power, Not(1)), select(hydro_active_power, Not(1)))
-s    # Temporarily commenting out PHS components - using only battery storage
     storage_discharge_power = battery_discharge  # hcat(PHS_discharge, select(battery_discharge, Not(1)))
     storage_charge_power = battery_charge  # hcat(PHS_charge, select(battery_charge, Not(1)))
-    AreaInterchange_flow = read_realized_variable(results, "FlowActivePowerVariable__AreaInterchange")
+    
+    # Expressions Results 
     power_balance = read_realized_expression(results, "ActivePowerBalance__Area")
-
-    # Production Costs
     pc_thermal = read_realized_expression(results, "ProductionCostExpression__ThermalStandard")
     pc_renewable = read_realized_expression(results, "ProductionCostExpression__RenewableDispatch")
     pc_hydro = read_realized_expression(results, "ProductionCostExpression__HydroDispatch")
-    #pc_PHS = read_realized_expression(results, "ProductionCostExpression__HydroPumpedStorage")
-    pc_all = hcat(pc_thermal, select(pc_renewable, Not(1)), select(pc_hydro, Not(1)), select(pc_PHS, Not(1)))
+    tx_interface_flow = read_realized_expression(results, "InterfaceTotalFlow__TransmissionInterface")
     fuel_consumption_thermal = read_realized_expression(results, "FuelConsumptionExpression__ThermalStandard")
+    #pc_PHS = read_realized_expression(results, "ProductionCostExpression__HydroPumpedStorage")
+    #pc_all = hcat(pc_thermal, select(pc_renewable, Not(1)), select(pc_hydro, Not(1)), select(pc_PHS, Not(1)))
+    pc_all = hcat(pc_thermal, select(pc_renewable, Not(1)), select(pc_hydro, Not(1)))
 
     # Auxiliary variables
     #Energy_PHS = read_realized_variable(results, "HydroEnergyOutput__HydroPumpedStorage")
@@ -1305,6 +1358,7 @@ s    # Temporarily commenting out PHS components - using only battery storage
     CSV.write(joinpath(results_file_path, "power_balance.csv"), power_balance)
     CSV.write(joinpath(results_file_path, "production_costs.csv"), pc_all)
     CSV.write(joinpath(results_file_path, "fuel_consumption_thermal.csv"), fuel_consumption_thermal)
+    CSV.write(joinpath(results_file_path, "tx_interface_flow.csv"), tx_interface_flow)
 
     # PHS Specific
     #CSV.write(joinpath(results_file_path, "PHS_UpperReservoir.csv"), PHS_UpperReservoir)
