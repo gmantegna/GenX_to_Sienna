@@ -431,6 +431,52 @@ function create_ThermalStandard_objects(sys::System, thermal_df::DataFrame, capa
         thermal_standards[resource_name] = thermal
 
     end
+
+    for zone_number in unique(thermal_df[!,:Zone])
+        # retrieve the bus name (PSY) by finding the key in zones_dict that matches our zone number
+        bus_name = findfirst(x -> x == zone_number, zone_dict)
+        if bus_name === nothing
+            @error "No bus found for zone $zone_number in zones_dict"
+            continue
+        end
+        # retrieve the bus object (PSY)
+        bus_object = get_component(ACBus, sys, bus_name)
+
+        resource_name = "NSE_"*string(zone_number)
+
+        # define thermal standard
+        thermal = ThermalStandard(;
+            name = resource_name,
+            available = true,
+            status = true,
+            bus = bus_object,
+            active_power = 0.0, # unitized by DEVICE base_power 
+            reactive_power = 0.0, # unitized by DEVICE base_power 
+            rating = 1.0, # unitized by DEVICE base_power
+            active_power_limits = (min = 0.0, max = 1.0),
+            reactive_power_limits = nothing,
+            ramp_limits = (up = 1000, down = 1000), # Sienna units: MW/Min
+            operation_cost = ThermalGenerationCost(
+                variable=FuelCurve(
+                    value_curve = LinearCurve(7.0,0.0),
+                    fuel_cost = 0.0,
+                    vom_cost = LinearCurve(9000, 0.0)
+                ),
+                fixed=0.0,
+                start_up=0.0,
+                shut_down=0.0
+            ),
+            base_power = 9999, # setting base power equal to nameplate capacity
+            time_limits = (up = 0.0, down = 0.0), # Hours, unaffected by per-unitization
+            must_run = false, # Default to false, will be updated later
+            prime_mover_type = getproperty(PrimeMovers,Symbol("CC")), # assign Prime Mover Type 
+            fuel = "OTHER", #assign ThermalFuels via direct string (i.e. $FuelType - not "ThermalFuels.$FuelType")
+        )
+
+        # add thermal standard to thermal_standards dictionary  
+        thermal_standards[resource_name] = thermal
+    end
+
     return thermal_standards
 end
 

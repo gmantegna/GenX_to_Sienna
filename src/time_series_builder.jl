@@ -209,23 +209,24 @@ function create_ThermalStandard_PSY_timeseries(gen_variability_ts::DataFrame, Th
             
             # Get the availability column for this generator
             if !hasproperty(year_data, Symbol(resource_name))
-                @warn "No availability data found for generator $resource_name in year $year"
-                continue
-            end
-            
-            # Verify hourly resolution, accounting for leap day skips
-            for i in 2:length(year_data.DateTime)
-                time_diff = year_data.DateTime[i] - year_data.DateTime[i-1]
-                is_leap_day_skip = (Dates.month(year_data.DateTime[i-1]) == 2 && Dates.day(year_data.DateTime[i-1]) == 28 &&
-                                  Dates.month(year_data.DateTime[i]) == 3 && Dates.day(year_data.DateTime[i]) == 1)
-                
-                if time_diff != Dates.Hour(1) && !is_leap_day_skip
-                    @warn "Non-hourly resolution detected in year $year for $resource_name at index $i"
+                normalized_data = ones(Float64,size(year_data[!,1]))
+                @warn "No availability data found for generator $resource_name in year $year. Setting to 1.0"
+                # continue
+            else
+                # Verify hourly resolution, accounting for leap day skips
+                for i in 2:length(year_data.DateTime)
+                    time_diff = year_data.DateTime[i] - year_data.DateTime[i-1]
+                    is_leap_day_skip = (Dates.month(year_data.DateTime[i-1]) == 2 && Dates.day(year_data.DateTime[i-1]) == 28 &&
+                                    Dates.month(year_data.DateTime[i]) == 3 && Dates.day(year_data.DateTime[i]) == 1)
+                    
+                    if time_diff != Dates.Hour(1) && !is_leap_day_skip
+                        @warn "Non-hourly resolution detected in year $year for $resource_name at index $i"
+                    end
                 end
+                
+                # Normalize the data by base_power
+                normalized_data = year_data[!, Symbol(resource_name)] ./ base_power
             end
-            
-            # Normalize the data by base_power
-            normalized_data = year_data[!, Symbol(resource_name)] ./ base_power
             
             # Create the timeseries name with year suffix
             ts_name = "max_active_power_$year"
