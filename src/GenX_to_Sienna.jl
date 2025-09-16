@@ -1127,7 +1127,7 @@ simulation_file_path = paths[:sienna_simulation_dir];
 
 # Define the range of weather years based on run type
 if run_type == "Deterministic"
-    weather_years = [1998]  # Single year for deterministic
+    weather_years = [1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020]
     sim_file_path = joinpath(paths[:sienna_simulation_dir], "deterministic");
 elseif run_type == "Monte_Carlo" 
     weather_years = 2000:2001  # Range of years for Monte Carlo
@@ -1171,8 +1171,6 @@ define_AreaNetwork_model(template_uc)
 
 # Loop through each weather year
 for wy in weather_years
-
-    wy = 1998 # for testing
 
     # Remove all forecasts from the system
     remove_time_series!(sys, DeterministicSingleTimeSeries)
@@ -1244,7 +1242,7 @@ for wy in weather_years
     # Define the simulation
     sim = Simulation(
         name = "sim_$wy",
-        steps = 3,  # Steps in your simulation
+        steps = 364,  # Steps in your simulation
         models = sim_model,
         sequence = sim_sequence,
         simulation_folder = sim_file_path,

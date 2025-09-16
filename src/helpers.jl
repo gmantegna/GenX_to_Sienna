@@ -12,11 +12,13 @@ function initialize_paths_and_inputs()
         root_dir = current_dir
     end
 
+    data_root_dir = "/scratch/gpfs/gm1710/Sienna_cases"
+
     # Define key directories
-    data_dir = joinpath(root_dir, "Sonoma", "GENX_Output") # GenX input files
-    PSI_results_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","output_results","PowerSimulations") # PSI processed results
-    PRAS_results_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","output_results","PRAS") # PRAS processed results
-    sienna_simulation_dir = joinpath(root_dir, "Sonoma", "Sienna_Outputs","simulation_files") # Sienna simulation results
+    data_dir = joinpath(data_root_dir, "Sonoma", "GENX_Output") # GenX input files
+    PSI_results_dir = joinpath(data_root_dir, "Sonoma", "Sienna_Outputs","output_results","PowerSimulations") # PSI processed results
+    PRAS_results_dir = joinpath(data_root_dir, "Sonoma", "Sienna_Outputs","output_results","PRAS") # PRAS processed results
+    sienna_simulation_dir = joinpath(data_root_dir, "Sonoma", "Sienna_Outputs","simulation_files") # Sienna simulation results
     
     # Ensure PSI output directory exists
     if !ispath(PSI_results_dir)
