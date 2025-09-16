@@ -3,6 +3,7 @@ results*/*
 .ipynb_checkpoints/*
 src/*.out
 .DS_Store
+Sonoma/*
 
 #working files
 power-systems.log
